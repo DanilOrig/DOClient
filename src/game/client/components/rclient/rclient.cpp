@@ -1,0 +1,2441 @@
+#include "rclient.h"
+
+#include "base/log.h"
+#include "base/process.h"
+#include "base/str.h"
+#include "engine/shared/config.h"
+#include "engine/shared/linereader.h"
+#include "game/client/gameclient.h"
+#include "game/localization.h"
+#include "game/version.h"
+#include "rclient_include.h"
+
+#include <engine/shared/json.h>
+
+static constexpr const char *RCLIENT_INFO_URL = "https://server.rushie.qzz.io/version";
+
+namespace ChatThings
+{
+	struct SChatLetter
+	{
+		const char *m_pWrongLetter;
+		char m_LetterEnglish;
+	};
+	// 1-3 -- russian
+	static const SChatLetter s_aLineLayout[] = {
+		{"й",'q'}, {"ц", 'w'}, {"у", 'e'}, {"к", 'r'}, {"е", 't'}, {"н", 'y'}, {"г", 'u'}, {"ш", 'i'}, {"щ", 'o'}, {"з", 'p'}, {"х", '['}, {"ъ", ']'},
+		{"ф",'a'}, {"ы", 's'}, {"в", 'd'}, {"а", 'f'}, {"п", 'g'}, {"р", 'h'}, {"о", 'j'}, {"л", 'k'}, {"д", 'l'}, {"ж", ';'}, {"э", '\''},
+		{"я",'z'}, {"ч", 'x'}, {"с", 'c'}, {"м", 'v'}, {"и", 'b'}, {"т", 'n'}, {"ь", 'm'}, {"б", ','}, {"ю", '.'}, {"ё", '`'}
+	};
+	static const STranslateLangs g_LangsList[] = {
+	    {"aa", "Afar"}, {"ab", "Abkhazian"}, {"ae", "Avestan"}, {"af", "Afrikaans"},
+	    {"ak", "Akan"}, {"am", "Amharic"}, {"an", "Aragonese"}, {"ar", "Arabic"},
+	    {"as", "Assamese"}, {"av", "Avaric"}, {"ay", "Aymara"}, {"az", "Azerbaijani"},
+	    {"ba", "Bashkir"}, {"be", "Belarusian"}, {"bg", "Bulgarian"}, {"bi", "Bislama"},
+	    {"bm", "Bambara"}, {"bn", "Bengali"}, {"bo", "Tibetan"}, {"br", "Breton"},
+	    {"bs", "Bosnian"}, {"ca", "Catalan"}, {"ce", "Chechen"}, {"ch", "Chamorro"},
+	    {"co", "Corsican"}, {"cr", "Cree"}, {"cs", "Czech"}, {"cu", "Church Slavic"},
+	    {"cv", "Chuvash"}, {"cy", "Welsh"}, {"da", "Danish"}, {"de", "German"},
+	    {"dv", "Divehi"}, {"dz", "Dzongkha"}, {"ee", "Ewe"}, {"el", "Greek"},
+	    {"en", "English"}, {"eo", "Esperanto"}, {"es", "Spanish"}, {"et", "Estonian"},
+	    {"eu", "Basque"}, {"fa", "Persian"}, {"ff", "Fulah"}, {"fi", "Finnish"},
+	    {"fj", "Fijian"}, {"fo", "Faroese"}, {"fr", "French"}, {"fy", "Western Frisian"},
+	    {"ga", "Irish"}, {"gd", "Gaelic"}, {"gl", "Galician"}, {"gn", "Guarani"},
+	    {"gu", "Gujarati"}, {"gv", "Manx"}, {"ha", "Hausa"}, {"he", "Hebrew"},
+	    {"hi", "Hindi"}, {"ho", "Hiri Motu"}, {"hr", "Croatian"}, {"ht", "Haitian"},
+	    {"hu", "Hungarian"}, {"hy", "Armenian"}, {"hz", "Herero"}, {"ia", "Interlingua"},
+	    {"id", "Indonesian"}, {"ie", "Interlingue"}, {"ig", "Igbo"}, {"ii", "Sichuan Yi"},
+	    {"ik", "Inupiaq"}, {"io", "Ido"}, {"is", "Icelandic"}, {"it", "Italian"},
+	    {"iu", "Inuktitut"}, {"ja", "Japanese"}, {"jv", "Javanese"}, {"ka", "Georgian"},
+	    {"kg", "Kongo"}, {"ki", "Kikuyu"}, {"kj", "Kuanyama"}, {"kk", "Kazakh"},
+	    {"kl", "Kalaallisut"}, {"km", "Central Khmer"}, {"kn", "Kannada"}, {"ko", "Korean"},
+	    {"kr", "Kanuri"}, {"ks", "Kashmiri"}, {"ku", "Kurdish"}, {"kv", "Komi"},
+	    {"kw", "Cornish"}, {"ky", "Kirghiz"}, {"la", "Latin"}, {"lb", "Luxembourgish"},
+	    {"lg", "Ganda"}, {"li", "Limburgan"}, {"ln", "Lingala"}, {"lo", "Lao"},
+	    {"lt", "Lithuanian"}, {"lu", "Luba-Katanga"}, {"lv", "Latvian"}, {"mg", "Malagasy"},
+	    {"mh", "Marshallese"}, {"mi", "Maori"}, {"mk", "Macedonian"}, {"ml", "Malayalam"},
+	    {"mn", "Mongolian"}, {"mr", "Marathi"}, {"ms", "Malay"}, {"mt", "Maltese"},
+	    {"my", "Burmese"}, {"na", "Nauru"}, {"nb", "Bokmål, Norwegian"}, {"nd", "Ndebele, North"},
+	    {"ne", "Nepali"}, {"ng", "Ndonga"}, {"nl", "Dutch"}, {"nn", "Norwegian Nynorsk"},
+	    {"no", "Norwegian"}, {"nr", "Ndebele, South"}, {"nv", "Navajo"}, {"ny", "Chichewa"},
+	    {"oc", "Occitan"}, {"oj", "Ojibwa"}, {"om", "Oromo"}, {"or", "Oriya"},
+	    {"os", "Ossetian"}, {"pa", "Panjabi"}, {"pi", "Pali"}, {"pl", "Polish"},
+	    {"ps", "Pushto"}, {"pt", "Portuguese"}, {"qu", "Quechua"}, {"rm", "Romansh"},
+	    {"rn", "Rundi"}, {"ro", "Romanian"}, {"ru", "Russian"}, {"rw", "Kinyarwanda"},
+	    {"sa", "Sanskrit"}, {"sc", "Sardinian"}, {"sd", "Sindhi"}, {"se", "Northern Sami"},
+	    {"sg", "Sango"}, {"si", "Sinhala"}, {"sk", "Slovak"}, {"sl", "Slovenian"},
+	    {"sm", "Samoan"}, {"sn", "Shona"}, {"so", "Somali"}, {"sq", "Albanian"},
+	    {"sr", "Serbian"}, {"ss", "Swati"}, {"st", "Sotho, Southern"}, {"su", "Sundanese"},
+	    {"sv", "Swedish"}, {"sw", "Swahili"}, {"ta", "Tamil"}, {"te", "Telugu"},
+	    {"tg", "Tajik"}, {"th", "Thai"}, {"ti", "Tigrinya"}, {"tk", "Turkmen"},
+	    {"tl", "Tagalog"}, {"tn", "Tswana"}, {"to", "Tonga"}, {"tr", "Turkish"},
+	    {"ts", "Tsonga"}, {"tt", "Tatar"}, {"tw", "Twi"}, {"ty", "Tahitian"},
+	    {"ug", "Uighur"}, {"uk", "Ukrainian"}, {"ur", "Urdu"}, {"uz", "Uzbek"},
+	    {"ve", "Venda"}, {"vi", "Vietnamese"}, {"vo", "Volapük"}, {"wa", "Walloon"},
+	    {"wo", "Wolof"}, {"xh", "Xhosa"}, {"yi", "Yiddish"}, {"yo", "Yoruba"},
+	    {"za", "Zhuang"}, {"zh", "Chinese"}, {"zu", "Zulu"}
+	};
+	static const STranslateLangs g_EmptyLang = {"", ""};
+	static const char *g_LangsListDefaultCodes[] = {"ru", "en", "kk", "de", "uk"};
+}
+
+CRClient::CRClient()
+{
+	CRClient::OnReset();
+}
+
+void CRClient::OnReset()
+{
+
+}
+
+void CRClient::OnInit()
+{
+	FetchRClientInfo();
+	SetForcedAspectRatio();
+	if(m_LatestLangsList.empty())
+		ResetLanguages();
+	if(!str_comp(g_Config.m_TcTranslateBackend, "duckduckgo"))
+		FetchDuckDuckGoVqd();
+}
+
+void CRClient::OnRender()
+{
+	if(m_pRClientDDstatsTask && m_pRClientDDstatsTask->State() == EHttpState::DONE)
+	{
+		FinishRclientDDstatsProfile();
+		ResetRclientDDstatsProfile();
+	}
+	if(g_Config.m_RcPlayerClanAutoChange)
+		DummyConnectedClan(Client()->DummyConnected());
+
+	if(m_pRClientInfoTask)
+	{
+		if(m_pRClientInfoTask->State() == EHttpState::DONE)
+		{
+			FinishRClientInfo();
+			ResetRClientInfoTask();
+		}
+	}
+
+	if(m_pRClientDDstatsTaskFindHours && m_pRClientDDstatsTaskFindHours->State() == EHttpState::DONE)
+	{
+		FinishRclientDDstatsFindHours();
+		ResetRclientDDstatsFindHours();
+	}
+
+	if(m_pRClientDDstatsTaskFindTime && m_pRClientDDstatsTaskFindTime->State() == EHttpState::DONE)
+	{
+		FinishRclientDDstatsFindTime();
+		ResetRclientDDstatsFindTime();
+	}
+
+	if(g_Config.m_RcRconSteamerMode)
+	{
+		if(GameClient()->m_GameConsole.IsActive() && GameClient()->m_GameConsole.GetConsoleType() == CGameConsole::CONSOLETYPE_REMOTE)
+		{
+			if(!ScreenSharePrivacyOld)
+			{
+				GameClient()->Graphics()->SetWindowScreenCaptureProtect(g_Config.m_RcRconSteamerMode);
+				ScreenSharePrivacyOld = true;
+			}
+		}
+		else
+		{
+			if(ScreenSharePrivacyOld)
+			{
+				GameClient()->Graphics()->SetWindowScreenCaptureProtect(0);
+				ScreenSharePrivacyOld = false;
+			}
+		}
+	}
+
+	if(GameClient()->m_Snap.m_SpecInfo.m_Active && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId == SPEC_FREEVIEW && !GameClient()->m_RcAdminPanel.IsActive() && g_Config.m_RcSpectatorMoveEnable)
+	{
+		float Speed = 75.0f * 32.0f * (GameClient()->m_Camera.m_Zoom * 6 / g_Config.m_ClDefaultZoom) * (g_Config.m_RcSpectatorMoveSpeed / 100.0f); // Adjusted for frame-time independence
+		float FrameTime = Client()->RenderFrameTime();
+		if(m_SpecMoveUp)
+			GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy].y -= Speed * FrameTime;
+		if(m_SpecMoveDown)
+			GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy].y += Speed * FrameTime;
+		if(m_SpecMoveLeft)
+			GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy].x -= Speed * FrameTime;
+		if(m_SpecMoveRight)
+			GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy].x += Speed * FrameTime;
+	}
+
+	if(g_Config.m_RcCustomClientsCollectClientTypeBestClient)
+	{
+		if(Client()->State() == IClient::STATE_ONLINE)
+		{
+			const uint64_t CurrentTime = time_get();
+			if(CurrentTime > m_LastBCFetchTime)
+			{
+				m_LastBCFetchTime = CurrentTime + 30 * time_freq();
+				FetchRclientBCFetchList();
+			}
+		}
+	}
+	else
+	{
+		m_vBcUsers.clear();
+	}
+	if(m_pRClientBCFetchListTask && m_pRClientBCFetchListTask->State() == EHttpState::DONE)
+	{
+		FinishRclientBCFetchList();
+		ResetRclientBCFetchList();
+	}
+
+	if(m_pRClientVqdTask && m_pRClientVqdTask->State() == EHttpState::DONE)
+	{
+		FinishDuckDuckGoVqd();
+		ResetDuckDuckGoVqdTask();
+	}
+	if(!str_comp(g_Config.m_TcTranslateBackend, "duckduckgo"))
+	{
+		const uint64_t CurrentTime = time_get();
+		if(CurrentTime > m_LastDDGFetchTime)
+		{
+			m_LastDDGFetchTime = CurrentTime + 600 * time_freq();
+			FetchDuckDuckGoVqd();
+		}
+	}
+}
+
+void CRClient::OnConsoleInit()
+{
+	ConfigManager()->RegisterCallback(CRClient::ConfigSaveCallback, this, ConfigDomain::RCLIENT);
+	Console()->Register("rc_find_player_from_ddstats", "s[type]", CFGFLAG_CLIENT, ConFindPlayerFromDdstats, this, "Fetch player from DDstats");
+	Console()->Register("rc_find_skin_from_ddstats", "s[type]", CFGFLAG_CLIENT, ConFindSkinFromDdstats, this, "Fetch player's skin from DDstats");
+	Console()->Register("rc_copy_skin_from_ddstats", "s[type]", CFGFLAG_CLIENT, ConCopySkinFromDdstats, this, "Fetch and copy player's skin from DDstats");
+	Console()->Register("rc_find_skin", "r[player]", CFGFLAG_CLIENT, ConFindSkin, this, "Find skin");
+	Console()->Register("rc_copy_skin", "r[player]", CFGFLAG_CLIENT, ConCopySkin, this, "Copy skin");
+	Console()->Register("rc_find_player", "r[player]", CFGFLAG_CLIENT, ConFindPlayer, this, "Find Player");
+	Console()->Register("rc_copy_color", "r[player]", CFGFLAG_CLIENT, ConCopyColor, this, "Copy Color skin");
+	Console()->Register("rc_backup_player_profile", "", CFGFLAG_CLIENT, ConBackupPlayerProfile, this, "Backup player profile");
+	Console()->Register("rc_tracker_add", "r[player]", CFGFLAG_CLIENT, ConTrackerAdd, this, "Add player to tracker");
+	Console()->Register("rc_tracker_remove", "r[player]", CFGFLAG_CLIENT, ConTrackerRemove, this, "Remove player from tracker");
+	Console()->Register("rc_tracker_reset", "", CFGFLAG_CLIENT, ConTrackerReset, this, "Reset tracker");
+	Console()->Register("rc_toggle_deepfly", "", CFGFLAG_CLIENT, ConToggleDeepfly, this, "Toggle deepfly");
+	Console()->Register("+rc_small_sens", "", CFGFLAG_CLIENT, ConToggleSmallSens, this, "small sens");
+	Console()->Register("+rc_45_degrees", "", CFGFLAG_CLIENT, ConToggle45Degrees, this, "45degrees");
+	Console()->Register("rc_message_filter_add_word", "s[word]", CFGFLAG_CLIENT, ConAddCensorWord, this, "Add word to censor list");
+	Console()->Register("rc_message_filter_remove_word", "s[word]", CFGFLAG_CLIENT, ConRemoveCensorWord, this, "Remove word from censor list");
+	Console()->Register("rc_message_filter_print_words", "", CFGFLAG_CLIENT, ConPrintCensorList, this, "Print censor list");
+	Console()->Register("rc_find_hours", "s[player]", CFGFLAG_CLIENT, ConPlayerFindHours, this, "Find hours");
+	Console()->Register("rc_find_time", "s[player] s[map] ?s[map1] ?s[map2] ?s[map3] ?s[map4] ?s[map5]", CFGFLAG_CLIENT, ConPlayerFindTime, this, "Find hours");
+	Console()->Register("rc_force_aspect", "", CFGFLAG_CLIENT, ConForceAspect, this, "Force aspect ratio(useless)");
+	Console()->Register("rc_translate_add_language", "s[langcode]", CFGFLAG_CLIENT, ConAddLanguage, this, "Add new language for translate (use ISO 639-1)");
+	Console()->Register("rc_translate_reset_languages", "", CFGFLAG_CLIENT, ConResetLanguages, this, "Reset languages");
+	Console()->Register("rc_goto_tele_cursor", "", CFGFLAG_CLIENT, ConGotoTeleCursor, this, "Goto tele cursor");
+	Console()->Register("rc_goto_finish_cursor", "", CFGFLAG_CLIENT, ConGotoFinishCursor, this, "Goto Finish cursor");
+	Console()->Register("+rc_spec_go_left", "", CFGFLAG_CLIENT, ConSpecGoLeft, this, "Go left in spec freeview");
+	Console()->Register("+rc_spec_go_right", "", CFGFLAG_CLIENT, ConSpecGoRight, this, "Go right in spec freeview");
+	Console()->Register("+rc_spec_go_up", "", CFGFLAG_CLIENT, ConSpecGoUp, this, "Go up in spec freeview");
+	Console()->Register("+rc_spec_go_down", "", CFGFLAG_CLIENT, ConSpecGoDown, this, "Go down in spec freeview");
+	Console()->Register("rc_launch_second_client", "", CFGFLAG_CLIENT, ConLaunchSecondClient, this, "Launch second client");
+	Console()->Register("rc_test_function", "s[map]", CFGFLAG_CLIENT, ConRClientTestFunction, this, "Just for test, lazy to remove");
+	Console()->Chain("rc_message_filter_mode", ConchainResetCensorListCache, this);
+	Console()->Chain("rc_message_filter_multiply_change_word_on_full_match", ConchainResetCensorListCache, this);
+	Console()->Chain("rc_message_filter_word_on_full_match", ConchainResetCensorListCache, this);
+	Console()->Chain("rc_message_filter_multiply_change_word_on_partial_match", ConchainResetCensorListCache, this);
+	Console()->Chain("rc_message_filter_word_on_partial_match", ConchainResetCensorListCache, this);
+	Console()->Chain("tc_translate_backend", ConchainCheckBackend, this);
+}
+
+void CRClient::OnMessage(int MsgType, void *pRawMsg)
+{
+	if(GameClient()->m_SuppressEvents)
+		return;
+
+	if(MsgType == NETMSGTYPE_SV_CHAT)
+	{
+		CNetMsg_Sv_Chat *pMsg = (CNetMsg_Sv_Chat *)pRawMsg;
+		ChatCheckingMessages(pMsg);
+	}
+}
+
+void CRClient::OnStateChange(int NewState, int OldState)
+{
+	if(NewState == IClient::STATE_OFFLINE)
+	{
+		ResetBinds();
+		m_vBcUsers.clear();
+	}
+	if(NewState == IClient::STATE_ONLINE)
+	{
+		FetchRclientBCFetchList();
+		m_LastBCFetchTime = time_get() + 30 * time_freq();
+	}
+}
+
+void CRClient::OnShutdown()
+{
+
+}
+
+void CRClient::OnNewSnapshot()
+{
+	SetForcedAspectRatio();
+	if(g_Config.m_RcCustomClientsCollectClientTypeBestClient)
+	{
+		for(int ClientId : m_vBcUsers)
+			if(GameClient()->m_aClients[ClientId].m_CustomClient == 0)
+				GameClient()->m_aClients[ClientId].m_CustomClient = CUSTOM_CLIENT_ID_BESTCLIENT;
+	}
+}
+
+void CRClient::ConfigSaveCallback(IConfigManager *pConfigManager, void *pUserData)
+{
+	CRClient *pSelf = (CRClient *)pUserData;
+	char aBuf[128];
+	if(pSelf->m_45degreesEnabled)
+	{
+		str_format(aBuf, sizeof(aBuf), "inp_mousesens %d", pSelf->m_Small45OldSens);
+		pConfigManager->WriteLine(aBuf, ConfigDomain::RCLIENT);
+		str_format(aBuf, sizeof(aBuf), "cl_mouse_max_distance %d", pSelf->m_45degreesDistanceOld);
+		pConfigManager->WriteLine(aBuf, ConfigDomain::RCLIENT);
+	}
+	if(pSelf->m_SmallSensEnabled)
+	{
+		str_format(aBuf, sizeof(aBuf), "inp_mousesens %d", pSelf->m_Small45OldSens);
+		pConfigManager->WriteLine(aBuf, ConfigDomain::RCLIENT);
+	}
+	if(pSelf->m_DeepflyEnabled && str_find_nocase(pSelf->GameClient()->m_Binds.Get(g_Config.m_RcDeepFlyOnRMB ? KEY_MOUSE_2 : KEY_MOUSE_1, 0), "+toggle cl_dummy_hammer 1 0"))
+	{
+		std::string Text {pSelf->GameClient()->m_Binds.Get(g_Config.m_RcDeepFlyOnRMB ? KEY_MOUSE_2 : KEY_MOUSE_1, 0)};
+		std::string ToDelete{"; +toggle cl_dummy_hammer 1 0"};
+		size_t Start {Text.find(ToDelete)};
+		while (Start != std::string::npos)
+		{
+			Text.erase(Start, ToDelete.length());
+			Start = Text.find(ToDelete, Start + ToDelete.length());
+		}
+		str_format(aBuf, sizeof(aBuf), "bind %s \"%s\"", g_Config.m_RcDeepFlyOnRMB ? "mouse2" : "mouse1", Text.c_str());
+		pConfigManager->WriteLine(aBuf, ConfigDomain::RCLIENT);
+	}
+	for(size_t i = 0; i < pSelf->CensorWordsList.size(); i++)
+	{
+		str_format(aBuf, sizeof(aBuf), "rc_message_filter_add_word %s", pSelf->CensorWordsList[i].c_str());
+		pConfigManager->WriteLine(aBuf, ConfigDomain::RCLIENTCENSORLIST);
+	}
+	for(ChatThings::STranslateLangs Item : pSelf->m_LatestLangsList)
+	{
+		str_format(aBuf, sizeof(aBuf), "rc_translate_add_language %s", Item.m_LangCode);
+		pConfigManager->WriteLine(aBuf, ConfigDomain::RCLIENT);
+	}
+}
+
+// Need things
+static int FindPlayerClientId(CGameClient *pGameClient ,const char *Nickname)
+{
+	int ClientID = -1;
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(str_comp_nocase(pGameClient->m_aClients[i].m_aName, Nickname) == 0)
+		{
+			ClientID = i;
+			break;
+		}
+	}
+	if(ClientID == -1)
+	{
+		ClientID = str_toint(Nickname);
+		if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+			return -1;
+		if(!pGameClient->m_aClients[ClientID].m_Active)
+			ClientID = -1;
+	}
+	if(ClientID >= 0 && ClientID < MAX_CLIENTS)
+		return ClientID;
+	else
+		return -1;
+}
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#endif
+
+static void FastPrint(CGameClient *pGameClient, const char *pName, const char *pFmt, ...)
+{
+	char aBuf[256];
+	va_list Args;
+	va_start(Args, pFmt);
+	str_format_v(aBuf, sizeof(aBuf), pFmt, Args);
+	va_end(Args);
+	pGameClient->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, pName, aBuf);
+}
+
+static void FastEcho(CGameClient *pGameClient, const char *pFmt, ...)
+{
+	char aBuf[256];
+	va_list Args;
+	va_start(Args, pFmt);
+	str_format_v(aBuf, sizeof(aBuf), pFmt, Args);
+	va_end(Args);
+	pGameClient->Echo(aBuf);
+}
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+
+//Version
+void CRClient::FetchRClientInfo()
+{
+	if(m_pRClientInfoTask && !m_pRClientInfoTask->Done())
+		return;
+	char aUrl[256];
+	str_copy(aUrl, RCLIENT_INFO_URL);
+	m_pRClientInfoTask = HttpGet(aUrl);
+	m_pRClientInfoTask->Timeout(CTimeout{10000, 0, 500, 10});
+	m_pRClientInfoTask->IpResolve(IPRESOLVE::V4);
+	Http()->Run(m_pRClientInfoTask);
+}
+
+typedef std::tuple<int, int, int> TVersion;
+static const TVersion gs_InvalidTCVersion = std::make_tuple(-1, -1, -1);
+
+static TVersion ToTCVersion(char *pStr)
+{
+	int aVersion[3] = {0, 0, 0};
+	const char *p = strtok(pStr, ".");
+
+	for(int i = 0; i < 3 && p; ++i)
+	{
+		if(!str_isallnum(p))
+			return gs_InvalidTCVersion;
+
+		aVersion[i] = str_toint(p);
+		p = strtok(NULL, ".");
+	}
+
+	if(p)
+		return gs_InvalidTCVersion;
+
+	return std::make_tuple(aVersion[0], aVersion[1], aVersion[2]);
+}
+
+void CRClient::FinishRClientInfo()
+{
+	json_value *pJson = m_pRClientInfoTask->ResultJson();
+	if(!pJson)
+		return;
+	const json_value &Json = *pJson;
+	const json_value &CurrentVersion = Json["version"];
+
+	if(CurrentVersion.type == json_string)
+	{
+		char aNewVersionStr[64];
+		str_copy(aNewVersionStr, CurrentVersion);
+		char aCurVersionStr[64];
+		str_copy(aCurVersionStr, RCLIENT_VERSION);
+		if(ToTCVersion(aNewVersionStr) > ToTCVersion(aCurVersionStr))
+		{
+			str_copy(m_aVersionStr, CurrentVersion);
+		}
+		else
+		{
+			m_aVersionStr[0] = '0';
+			m_aVersionStr[1] = '\0';
+		}
+		m_FetchedRClientInfo = true;
+	}
+
+	json_value_free(pJson);
+}
+
+bool CRClient::NeedUpdate()
+{
+	return str_comp(m_aVersionStr, "0") != 0;
+}
+
+void CRClient::ResetRClientInfoTask()
+{
+	if(m_pRClientInfoTask)
+	{
+		m_pRClientInfoTask->Abort();
+		m_pRClientInfoTask = NULL;
+	}
+}
+
+//Dummy clan
+void CRClient::DummyConnectedClan(const bool IsDummyConnected)
+{
+	if(IsDummyConnected && !m_DummyConnectedPrevState)
+	{
+		m_DummyConnectedPrevState = IsDummyConnected;
+		str_copy(g_Config.m_PlayerClan, g_Config.m_RcPlayerClanWithDummy, sizeof(g_Config.m_PlayerClan));
+		GameClient()->SendInfo(false);
+	}
+	else if(!IsDummyConnected && m_DummyConnectedPrevState)
+	{
+		m_DummyConnectedPrevState = IsDummyConnected;
+		str_copy(g_Config.m_PlayerClan, g_Config.m_RcPlayerClanNoDummy, sizeof(g_Config.m_PlayerClan));
+		GameClient()->SendInfo(false);
+	}
+}
+
+
+// Find/Copy Skin
+static std::string TrimRight(const char *aInput)
+{
+	std::string Result(aInput);
+	str_utf8_trim_right(Result.data());
+	return Result;
+}
+
+void CRClient::ConFindPlayerFromDdstats(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	pThis->m_DDstatsSearchType = 1;
+	str_copy(pThis->m_DDstatsSearchNickname, TrimRight(pResult->GetString(0)).c_str(), sizeof(pThis->m_DDstatsSearchNickname));
+	pThis->FetchRclientDDstatsProfile();
+}
+
+void CRClient::ConFindSkinFromDdstats(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	pThis->m_DDstatsSearchType = 2;
+	str_copy(pThis->m_DDstatsSearchNickname, TrimRight(pResult->GetString(0)).c_str(), sizeof(pThis->m_DDstatsSearchNickname));
+	pThis->FetchRclientDDstatsProfile();
+}
+
+void CRClient::ConCopySkinFromDdstats(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	pThis->m_DDstatsSearchType = 3;
+	str_copy(pThis->m_DDstatsSearchNickname, TrimRight(pResult->GetString(0)).c_str(), sizeof(pThis->m_DDstatsSearchNickname));
+	pThis->FetchRclientDDstatsProfile();
+}
+
+void CRClient::FetchRclientDDstatsProfile()
+{
+	if(m_pRClientDDstatsTask && !m_pRClientDDstatsTask->Done())
+	{
+		return;
+	}
+	char aUrl[256];
+	char aEncodedNickname[256];
+	EscapeUrl(aEncodedNickname, sizeof(aEncodedNickname), m_DDstatsSearchNickname);
+	str_format(aUrl, sizeof(aUrl), "https://ddstats.tw/profile/json?player=%s", aEncodedNickname);
+	m_pRClientDDstatsTask = HttpGet(aUrl);
+	m_pRClientDDstatsTask->Timeout(CTimeout{20000, 0, 500, 10});
+	m_pRClientDDstatsTask->IpResolve(IPRESOLVE::V4);
+	Http()->Run(m_pRClientDDstatsTask);
+}
+
+static void PrintPlayerInfo(CGameClient *pGameClient , const char *Nickname, const char *Skin, const char *Clan, const int Country, const int CustomColor, const int SkinColorBodyint, const int SkinColorFeetint)
+{
+	FastPrint(pGameClient , "Info","- Nickname: %s", Nickname);
+	FastPrint(pGameClient , "Info","- Skin name: %s", Skin);
+	FastPrint(pGameClient , "Info","- Clan: %s", Clan);
+	FastPrint(pGameClient , "Info","- Country: %d", Country);
+	if(CustomColor)
+	{
+		pGameClient->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "Info", "- Custom Color: 1");
+		FastPrint(pGameClient , "Info","- Body Color: %d", SkinColorBodyint);
+		FastPrint(pGameClient , "Info","- Feet Color: %d", SkinColorFeetint);
+	}
+	else
+		pGameClient->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "Info", "- Custom Color: 0");
+}
+
+static void PrintSkinInfo(CGameClient *pGameClient, const char *Skin, const int CustomColor, const int SkinColorBodyint, const int SkinColorFeetint)
+{
+	FastPrint(pGameClient , "Info","- Skin name: %s", Skin);
+	if(CustomColor)
+	{
+		pGameClient->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "Info", "- Custom Color: 1");
+		FastPrint(pGameClient , "Info","- Body Color: %d", SkinColorBodyint);
+		FastPrint(pGameClient , "Info","- Feet Color: %d", SkinColorFeetint);
+	}
+	else
+		pGameClient->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "Info", "- Custom Color: 0");
+}
+
+static void PrintColorInfo(CGameClient *pGameClient, const int CustomColor, const int SkinColorBodyint, const int SkinColorFeetint)
+{
+	if(CustomColor)
+	{
+		pGameClient->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "Info", "- Custom Color: 1");
+		FastPrint(pGameClient , "Info","- Body Color: %d", SkinColorBodyint);
+		FastPrint(pGameClient , "Info","- Feet Color: %d", SkinColorFeetint);
+	}
+	else
+		pGameClient->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "Info", "- Custom Color: 0");
+}
+
+void CRClient::ApplySkinToPlayer(const char *Skin, const int CustomColor, const int SkinColorBodyint, const int SkinColorFeetint)
+{
+	if(g_Config.m_ClDummy == 1)
+	{
+		str_copy(DummySkinBeforeCopyPlayer, g_Config.m_ClDummySkin, sizeof(DummySkinBeforeCopyPlayer));
+		DummyUseCustomColorBeforeCopyPlayer = g_Config.m_ClDummyUseCustomColor;
+		DummyBodyColorBeforeCopyPlayer = g_Config.m_ClDummyColorBody;
+		DummyFeetColorBeforeCopyPlayer = g_Config.m_ClDummyColorFeet;
+		str_copy(g_Config.m_ClDummySkin, Skin, sizeof(g_Config.m_ClDummySkin));
+		g_Config.m_ClDummyUseCustomColor = CustomColor;
+		g_Config.m_ClDummyColorBody = SkinColorBodyint;
+		g_Config.m_ClDummyColorFeet = SkinColorFeetint;
+		GameClient()->SendDummyInfo(false);
+	}
+	if(g_Config.m_ClDummy == 0)
+	{
+		str_copy(PlayerSkinBeforeCopyPlayer, g_Config.m_ClPlayerSkin, sizeof(PlayerSkinBeforeCopyPlayer));
+		PlayerUseCustomColorBeforeCopyPlayer = g_Config.m_ClPlayerUseCustomColor;
+		PlayerBodyColorBeforeCopyPlayer = g_Config.m_ClPlayerColorBody;
+		PlayerFeetColorBeforeCopyPlayer = g_Config.m_ClPlayerColorFeet;
+		str_copy(g_Config.m_ClPlayerSkin, Skin, sizeof(g_Config.m_ClPlayerSkin));
+		g_Config.m_ClPlayerUseCustomColor = CustomColor;
+		g_Config.m_ClPlayerColorBody = SkinColorBodyint;
+		g_Config.m_ClPlayerColorFeet = SkinColorFeetint;
+		GameClient()->SendInfo(false);
+	}
+}
+
+void CRClient::ApplyColorToPlayer(const int CustomColor, const int SkinColorBodyint, const int SkinColorFeetint)
+{
+	if(g_Config.m_ClDummy == 1)
+	{
+		str_copy(DummySkinBeforeCopyPlayer, g_Config.m_ClDummySkin, sizeof(DummySkinBeforeCopyPlayer));
+		DummyUseCustomColorBeforeCopyPlayer = g_Config.m_ClDummyUseCustomColor;
+		DummyBodyColorBeforeCopyPlayer = g_Config.m_ClDummyColorBody;
+		DummyFeetColorBeforeCopyPlayer = g_Config.m_ClDummyColorFeet;
+		g_Config.m_ClDummyUseCustomColor = CustomColor;
+		g_Config.m_ClDummyColorBody = SkinColorBodyint;
+		g_Config.m_ClDummyColorFeet = SkinColorFeetint;
+		GameClient()->SendDummyInfo(false);
+	}
+	if(g_Config.m_ClDummy == 0)
+	{
+		str_copy(PlayerSkinBeforeCopyPlayer, g_Config.m_ClPlayerSkin, sizeof(PlayerSkinBeforeCopyPlayer));
+		PlayerUseCustomColorBeforeCopyPlayer = g_Config.m_ClPlayerUseCustomColor;
+		PlayerBodyColorBeforeCopyPlayer = g_Config.m_ClPlayerColorBody;
+		PlayerFeetColorBeforeCopyPlayer = g_Config.m_ClPlayerColorFeet;
+		g_Config.m_ClPlayerUseCustomColor = CustomColor;
+		g_Config.m_ClPlayerColorBody = SkinColorBodyint;
+		g_Config.m_ClPlayerColorFeet = SkinColorFeetint;
+		GameClient()->SendInfo(false);
+	}
+}
+
+void CRClient::FinishRclientDDstatsProfile()
+{
+	json_value *pJson = m_pRClientDDstatsTask->ResultJson();
+	if(!pJson)
+	{
+		GameClient()->Echo("No that player");
+		m_DDstatsSearchType = 0;
+		return;
+	}
+	const json_value &Json = *pJson;
+	const json_value &Nickname = Json["name"];
+	const json_value &Clan = Json["clan"];
+	const json_value &Country = Json["country"];
+	const json_value &Skin = Json["skin_name"];
+	const json_value &SkinColorBody = Json["skin_color_body"];
+	const json_value &SkinColorFeet = Json["skin_color_feet"];
+
+	if(Nickname.type == json_string)
+	{
+		int Countryint = Country.u.integer;
+		int SkinColorBodyint = SkinColorBody.u.integer;
+		int SkinColorFeetint = SkinColorFeet.u.integer;
+		int CustomColor = SkinColorFeetint != 0 || SkinColorBodyint != 0;
+		if(m_DDstatsSearchType == 1)
+			PrintPlayerInfo(GameClient(), Nickname.u.string.ptr, Skin.u.string.ptr, Clan.u.string.ptr, Countryint, CustomColor, SkinColorBodyint, SkinColorFeetint);
+		if(m_DDstatsSearchType == 2)
+			PrintSkinInfo(GameClient(), Skin.u.string.ptr, CustomColor, SkinColorBodyint, SkinColorFeetint);
+		if(m_DDstatsSearchType == 3)
+		{
+			PrintSkinInfo(GameClient(), Skin.u.string.ptr, CustomColor, SkinColorBodyint, SkinColorFeetint);
+			ApplySkinToPlayer(Skin.u.string.ptr, CustomColor, SkinColorBodyint, SkinColorFeetint);
+		}
+		m_DDstatsSearchType = 0;
+	}
+	json_value_free(pJson);
+}
+
+void CRClient::ResetRclientDDstatsProfile()
+{
+	if(m_pRClientDDstatsTask)
+	{
+		m_pRClientDDstatsTask->Abort();
+		m_pRClientDDstatsTask = nullptr;
+	}
+}
+
+void CRClient::ConFindSkin(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	int ClientId = FindPlayerClientId(pThis->GameClient(), TrimRight(pResult->GetString(0)).c_str());
+	if(ClientId == -1)
+	{
+		pThis->GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "game", "Invalid client ID");
+		pThis->GameClient()->Echo("No that player on server");
+		return;
+	}
+	const CGameClient::CClientData &ClientData = pThis->GameClient()->m_aClients[ClientId];
+	if(ClientData.m_aSkinName[0])
+	{
+		PrintSkinInfo(pThis->GameClient(), ClientData.m_aSkinName, ClientData.m_UseCustomColor, ClientData.m_ColorBody, ClientData.m_ColorFeet);
+	}
+}
+
+void CRClient::ConFindPlayer(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	int ClientId = FindPlayerClientId(pThis->GameClient(), TrimRight(pResult->GetString(0)).c_str());
+	if(ClientId == -1)
+	{
+		pThis->GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "game", "Invalid client ID");
+		pThis->GameClient()->Echo("No that player on server");
+		return;
+	}
+	const CGameClient::CClientData &ClientData = pThis->GameClient()->m_aClients[ClientId];
+	if(ClientData.m_aSkinName[0])
+	{
+		PrintPlayerInfo(pThis->GameClient(), ClientData.m_aName, ClientData.m_aSkinName, ClientData.m_aClan, ClientData.m_Country, ClientData.m_UseCustomColor, ClientData.m_ColorBody, ClientData.m_ColorFeet);
+	}
+}
+
+void CRClient::ConCopySkin(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	int ClientId = FindPlayerClientId(pThis->GameClient(), TrimRight(pResult->GetString(0)).c_str());
+	if(ClientId == -1)
+	{
+		pThis->GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "game", "Invalid client ID");
+		pThis->GameClient()->Echo("No that player on server");
+		return;
+	}
+	const CGameClient::CClientData &ClientData = pThis->GameClient()->m_aClients[ClientId];
+	if(ClientData.m_aSkinName[0])
+	{
+		PrintSkinInfo(pThis->GameClient(), ClientData.m_aSkinName, ClientData.m_UseCustomColor, ClientData.m_ColorBody, ClientData.m_ColorFeet);
+		pThis->ApplySkinToPlayer(ClientData.m_aSkinName, ClientData.m_UseCustomColor, ClientData.m_ColorBody, ClientData.m_ColorFeet);
+	}
+}
+
+void CRClient::ConCopyColor(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	int ClientId = FindPlayerClientId(pThis->GameClient(), TrimRight(pResult->GetString(0)).c_str());
+	if(ClientId == -1)
+	{
+		pThis->GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "game", "Invalid client ID");
+		pThis->GameClient()->Echo("No that player on server");
+		return;
+	}
+	const CGameClient::CClientData &ClientData = pThis->GameClient()->m_aClients[ClientId];
+	if(ClientData.m_aSkinName[0])
+	{
+		PrintColorInfo(pThis->GameClient(), ClientData.m_UseCustomColor, ClientData.m_ColorBody, ClientData.m_ColorFeet);
+		pThis->ApplyColorToPlayer(ClientData.m_UseCustomColor, ClientData.m_ColorBody, ClientData.m_ColorFeet);
+	}
+}
+
+void CRClient::ConBackupPlayerProfile(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = (CRClient *)pUserData;
+	if(g_Config.m_ClDummy == 1)
+	{
+		if(str_length(pSelf->DummySkinBeforeCopyPlayer) > 0)
+		{
+			str_copy(g_Config.m_ClDummySkin, pSelf->DummySkinBeforeCopyPlayer, sizeof(g_Config.m_ClDummySkin));
+			g_Config.m_ClDummyUseCustomColor = pSelf->DummyUseCustomColorBeforeCopyPlayer;
+			g_Config.m_ClDummyColorBody = pSelf->DummyBodyColorBeforeCopyPlayer;
+			g_Config.m_ClDummyColorFeet = pSelf->DummyFeetColorBeforeCopyPlayer;
+			pSelf->GameClient()->SendDummyInfo(false);
+		}
+		else
+		{
+			pSelf->GameClient()->Echo("There no info of player/skin copy");
+		}
+	}
+	if(g_Config.m_ClDummy == 0)
+	{
+		if(str_length(pSelf->PlayerSkinBeforeCopyPlayer) > 0)
+		{
+			str_copy(g_Config.m_ClPlayerSkin, pSelf->PlayerSkinBeforeCopyPlayer, sizeof(g_Config.m_ClPlayerSkin));
+			g_Config.m_ClPlayerUseCustomColor = pSelf->PlayerUseCustomColorBeforeCopyPlayer;
+			g_Config.m_ClPlayerColorBody = pSelf->PlayerBodyColorBeforeCopyPlayer;
+			g_Config.m_ClPlayerColorFeet = pSelf->PlayerFeetColorBeforeCopyPlayer;
+			pSelf->GameClient()->SendInfo(false);
+		}
+		else
+		{
+			pSelf->GameClient()->Echo("There no info of player/skin copy");
+		}
+	}
+}
+
+// Tracker
+void CRClient::ConTrackerAdd(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	int ClientId = FindPlayerClientId(pThis->GameClient(), TrimRight(pResult->GetString(0)).c_str());
+	if(ClientId == -1)
+	{
+		pThis->GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "Tracker", "Invalid client ID");
+		pThis->GameClient()->Echo("No that player on server");
+		return;
+	}
+	const CGameClient::CClientData &ClientData = pThis->GameClient()->m_aClients[ClientId];
+	if(ClientData.m_aName[0] && ClientId >= 0 && ClientId < MAX_CLIENTS)
+	{
+		FastPrint(pThis->GameClient(), "Tracker", "Added player: %s", ClientData.m_aName);
+		FastEcho(pThis->GameClient(), "[[green]]Tracker: Added player: %s", ClientData.m_aName);
+		pThis->m_vPlayersInTracker.push_back({ClientData.ClientId(), ClientData.m_aName});
+	}
+}
+void CRClient::ConTrackerRemove(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	int ClientId = FindPlayerClientId(pThis->GameClient(), TrimRight(pResult->GetString(0)).c_str());
+	if(ClientId == -1)
+	{
+		pThis->GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "Tracker", "Invalid client ID");
+		pThis->GameClient()->Echo("No that player on server");
+		return;
+	}
+	const CGameClient::CClientData &ClientData = pThis->GameClient()->m_aClients[ClientId];
+	if(ClientData.m_aName[0] && ClientId >= 0 && ClientId < MAX_CLIENTS)
+	{
+		for(size_t i = 0; i < pThis->m_vPlayersInTracker.size(); i++)
+		{
+			if(ClientData.ClientId() == pThis->m_vPlayersInTracker[i].m_ClientId)
+			{
+				FastPrint(pThis->GameClient(), "Tracker", "Removed player: %s", pThis->m_vPlayersInTracker[i].m_Nickname.c_str());
+				FastEcho(pThis->GameClient(), "[[red]]Tracker: Removed player: %s", pThis->m_vPlayersInTracker[i].m_Nickname.c_str());
+				pThis->m_vPlayersInTracker.erase(pThis->m_vPlayersInTracker.begin() + i);
+				return;
+			}
+		}
+		pThis->GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "Tracker", "Player not in tracker");
+		pThis->GameClient()->Echo("Player not in tracker");
+	}
+}
+void CRClient::ConTrackerReset(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	for(size_t i = 0; i < pThis->m_vPlayersInTracker.size(); i++)
+	{
+		FastPrint(pThis->GameClient(), "Tracker", "Removed player: %s", pThis->m_vPlayersInTracker[i].m_Nickname.c_str());
+		FastEcho(pThis->GameClient(), "[[red]]Tracker: Removed player: %s", pThis->m_vPlayersInTracker[i].m_Nickname.c_str());
+	}
+	pThis->m_vPlayersInTracker.clear();
+}
+
+void CRClient::TrackerClientIdRemove(int ClientId)
+{
+	for(size_t i = 0; i < m_vPlayersInTracker.size(); i++)
+	{
+		if(ClientId == m_vPlayersInTracker[i].m_ClientId)
+		{
+			FastPrint(GameClient(), "Tracker", "Removed player: %s", m_vPlayersInTracker[i].m_Nickname.c_str());
+			FastEcho(GameClient(), "[[red]]Tracker: Removed player: %s", m_vPlayersInTracker[i].m_Nickname.c_str());
+			m_vPlayersInTracker.erase(m_vPlayersInTracker.begin() + i);
+			return;
+		}
+	}
+}
+bool CRClient::TrackerIsTracked(int ClientId)
+{
+	for(size_t i = 0; i < m_vPlayersInTracker.size(); i++)
+	{
+		if(ClientId == m_vPlayersInTracker[i].m_ClientId)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+void CRClient::TrackerClientIdAdd(int ClientId)
+{
+	const CGameClient::CClientData &ClientData = GameClient()->m_aClients[ClientId];
+	if(ClientData.m_aName[0] && ClientId >= 0 && ClientId < MAX_CLIENTS)
+	{
+		FastPrint(GameClient(), "Tracker", "Added player: %s", ClientData.m_aName);
+		FastEcho(GameClient(), "[[green]]Tracker: Added player: %s", ClientData.m_aName);
+		m_vPlayersInTracker.push_back({ClientData.ClientId(), ClientData.m_aName});
+	}
+}
+
+// Binds
+void CRClient::ResetBinds()
+{
+	if(m_45degreesEnabled)
+	{
+		Toggle45Degrees(false);
+	}
+	if(m_SmallSensEnabled)
+	{
+		ToggleSmallSens(false);
+	}
+	if(m_DeepflyEnabled && str_find_nocase(GameClient()->m_Binds.Get(g_Config.m_RcDeepFlyOnRMB ? KEY_MOUSE_2 : KEY_MOUSE_1, 0), "+toggle cl_dummy_hammer 1 0"))
+	{
+		ToggleDeepFly(false, GameClient()->m_Binds.Get(g_Config.m_RcDeepFlyOnRMB ? KEY_MOUSE_2 : KEY_MOUSE_1, 0));
+	}
+}
+
+void CRClient::ConToggle45Degrees(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	bool m_45degreestoggle = pResult->GetInteger(0) != 0;
+	if(pSelf->m_SmallSensEnabled)
+	{
+		if(m_45degreestoggle && !pSelf->m_45degreestogglelastinput)
+			pSelf->GameClient()->Echo("[[red]] Cant enable 45 degrees. Small send enabled");
+		pSelf->m_45degreestogglelastinput = m_45degreestoggle;
+		return;
+	}
+	if(g_Config.m_RcToggle45degrees)
+	{
+		if(m_45degreestoggle && !pSelf->m_45degreestogglelastinput)
+		{
+			if(!pSelf->m_45degreesEnabled)
+			{
+				pSelf->Toggle45Degrees(true);
+			}
+			else
+			{
+				pSelf->Toggle45Degrees(false);
+			}
+		}
+		pSelf->m_45degreestogglelastinput = m_45degreestoggle;
+	}
+	else
+	{
+		if(m_45degreestoggle && !pSelf->m_45degreestogglelastinput && !pSelf->m_45degreesEnabled)
+		{
+			pSelf->Toggle45Degrees(true);
+		}
+		else if(!m_45degreestoggle && pSelf->m_45degreesEnabled)
+		{
+			pSelf->Toggle45Degrees(false);
+		}
+		pSelf->m_45degreestogglelastinput = m_45degreestoggle;
+	}
+}
+void CRClient::Toggle45Degrees(bool Enable, bool NeedEcho)
+{
+	if(Enable)
+	{
+		m_45degreesEnabled = true;
+		if(g_Config.m_Rc45degreesEcho && NeedEcho)
+			GameClient()->Echo("[[green]] 45° on");
+		if(m_Small45OldSens == -1)
+			m_Small45OldSens = g_Config.m_InpMousesens;
+		if(m_45degreesDistanceOld == -1)
+			m_45degreesDistanceOld = g_Config.m_ClMouseMaxDistance;
+		g_Config.m_ClMouseMaxDistance = 2;
+		g_Config.m_InpMousesens = 4;
+	}
+	else
+	{
+		m_45degreesEnabled = false;
+		if(g_Config.m_Rc45degreesEcho && NeedEcho)
+			GameClient()->Echo("[[red]] 45° off");
+		if(m_45degreesDistanceOld != -1)
+		{
+			g_Config.m_ClMouseMaxDistance = m_45degreesDistanceOld;
+			m_45degreesDistanceOld = -1;
+		}
+		else
+		{
+			GameClient()->Echo("[[red]] Didn't find old distance. Binding 400");
+			g_Config.m_ClMouseMaxDistance = 400;
+			m_45degreesDistanceOld = -1;
+		}
+		if(m_Small45OldSens != -1)
+		{
+			g_Config.m_InpMousesens = m_Small45OldSens;
+			m_Small45OldSens = -1;
+		}
+		else
+		{
+			GameClient()->Echo("[[red]] Didn't find old sens. Binding 100 sens");
+			g_Config.m_InpMousesens = 100;
+			m_Small45OldSens = -1;
+		}
+	}
+}
+
+void CRClient::ConToggleSmallSens(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	bool m_SmallSenstoggle = pResult->GetInteger(0) != 0;
+	if(pSelf->m_45degreesEnabled)
+	{
+		if(m_SmallSenstoggle && !pSelf->m_Smallsenstogglelastinput)
+			pSelf->GameClient()->Echo("[[red]] Cant enable small sens. 45 degrees enabled");
+		pSelf->m_Smallsenstogglelastinput = m_SmallSenstoggle;
+		return;
+	}
+	if(g_Config.m_RcToggleSmallSens)
+	{
+		if(m_SmallSenstoggle && !pSelf->m_Smallsenstogglelastinput)
+		{
+			if(!pSelf->m_SmallSensEnabled)
+			{
+				pSelf->ToggleSmallSens(true);
+			}
+			else
+			{
+				pSelf->ToggleSmallSens(false);
+			}
+		}
+		pSelf->m_Smallsenstogglelastinput = m_SmallSenstoggle;
+	}
+	else
+	{
+		if(m_SmallSenstoggle && !pSelf->m_Smallsenstogglelastinput && !pSelf->m_SmallSensEnabled)
+		{
+			pSelf->ToggleSmallSens(true);
+		}
+		else if(!m_SmallSenstoggle && pSelf->m_SmallSensEnabled)
+		{
+			pSelf->ToggleSmallSens(false);
+		}
+		pSelf->m_Smallsenstogglelastinput = m_SmallSenstoggle;
+	}
+}
+void CRClient::ToggleSmallSens(bool Enable, bool NeedEcho)
+{
+	if(Enable)
+	{
+		m_SmallSensEnabled = true;
+		if(g_Config.m_RcSmallSensEcho && NeedEcho)
+			GameClient()->Echo("[[green]] small sens on");
+		if(m_Small45OldSens == -1)
+			m_Small45OldSens = g_Config.m_InpMousesens;
+		g_Config.m_InpMousesens = 1;
+	}
+	else
+	{
+		m_SmallSensEnabled = false;
+		if(g_Config.m_RcSmallSensEcho && NeedEcho)
+			GameClient()->Echo("[[red]] small sens off");
+		if(m_Small45OldSens != -1)
+		{
+			g_Config.m_InpMousesens = m_Small45OldSens;
+			m_Small45OldSens = -1;
+		}
+		else
+		{
+			GameClient()->Echo("[[red]] Didn't find old sens. Binding 100 sens");
+			g_Config.m_InpMousesens = 100;
+			m_Small45OldSens = -1;
+		}
+	}
+}
+
+void CRClient::ConToggleDeepfly(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	char CurBind[128];
+	str_copy(CurBind, pSelf->GameClient()->m_Binds.Get(g_Config.m_RcDeepFlyOnRMB ? KEY_MOUSE_2 : KEY_MOUSE_1, 0), sizeof(CurBind));
+	if(str_find_nocase(CurBind, "+toggle cl_dummy_hammer 1 0"))
+	{
+		pSelf->ToggleDeepFly(false, CurBind);
+	}
+	else
+	{
+		pSelf->ToggleDeepFly(true, CurBind);
+	}
+}
+void CRClient::ToggleDeepFly(bool Enable, const char *CurBind, bool NeedEcho)
+{
+	if(!Enable)
+	{
+		m_DeepflyEnabled = false;
+		std::string Text {CurBind};
+		std::string ToDelete{"; +toggle cl_dummy_hammer 1 0"};
+		size_t Start {Text.find(ToDelete)};
+		while (Start != std::string::npos)
+		{
+			Text.erase(Start, ToDelete.length());
+			Start = Text.find(ToDelete, Start + ToDelete.length());
+		}
+		GameClient()->m_Binds.Bind(g_Config.m_RcDeepFlyOnRMB ? KEY_MOUSE_2 : KEY_MOUSE_1, Text.c_str(), false, 0);
+		GameClient()->Echo("[[red]] Deepfly off");
+	}
+	else
+	{
+		m_DeepflyEnabled = true;
+		std::string Text {CurBind};
+		Text.append("; +toggle cl_dummy_hammer 1 0");
+		GameClient()->Echo("[[green]] Deepfly on");
+		GameClient()->m_Binds.Bind(g_Config.m_RcDeepFlyOnRMB ? KEY_MOUSE_2 : KEY_MOUSE_1, Text.c_str(), false, 0);
+	}
+}
+
+// Message Filter
+void CRClient::ConchainResetCensorListCache(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData)
+{
+	pfnCallback(pResult, pCallbackUserData);
+	((CRClient *)pUserData)->m_FilteredMessagesCache.clear();
+}
+
+void CRClient::ConAddCensorWord(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	char aBuf[256];
+	str_utf8_tolower(pResult->GetString(0), aBuf, sizeof(aBuf));
+	pSelf->CensorWordsList.push_back(aBuf);
+	pSelf->m_FilteredMessagesCache.clear();
+}
+
+void CRClient::ConRemoveCensorWord(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	const char *CensorWord = pResult->GetString(0);
+	for(size_t i = 0; i < pSelf->CensorWordsList.size(); i++)
+	{
+		if(!str_utf8_comp_nocase(CensorWord, pSelf->CensorWordsList[i].c_str()))
+		{
+			FastPrint(pSelf->GameClient(), "Censor", "Removed word: %s", pSelf->CensorWordsList[i].c_str());
+			pSelf->CensorWordsList.erase(pSelf->CensorWordsList.begin() + i);
+			pSelf->m_FilteredMessagesCache.clear();
+			return;
+		}
+	}
+	FastPrint(pSelf->GameClient(), "Censor", "Didn't find word");
+	pSelf->m_FilteredMessagesCache.clear();
+}
+
+void CRClient::ConPrintCensorList(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	std::string AllWords;
+	for(size_t i = 0; i < pSelf->CensorWordsList.size(); i++)
+	{
+		if(i != 0)
+			AllWords.append(", ");
+		AllWords.append(pSelf->CensorWordsList[i]);
+	}
+	FastPrint(pSelf->GameClient(), "All words", "%s", AllWords.c_str());
+}
+
+const char *CRClient::FilterMessage(const char *Message, bool IsChat, int ClientId)
+{
+	//TODO: Transfer message filter in chat.cpp
+	if(g_Config.m_RcMessageFilterMode == 0)
+	{
+		return Message;
+	}
+
+	if(auto It = m_FilteredMessagesCache.find(Message); It != m_FilteredMessagesCache.end())
+		return It->second.c_str();
+
+	bool CensorFoundInMessage = false;
+	std::string text {Message};
+	if(g_Config.m_RcMessageFilterMode == 1)
+	{
+		for(size_t i = 0; i < CensorWordsList.size(); i++)
+		{
+			std::string to_delete{CensorWordsList[i]};
+			const char *pFound = str_utf8_find_nocase(text.c_str(), to_delete.c_str());
+			while(pFound)
+			{
+				CensorFoundInMessage = true;
+				size_t start = pFound - text.c_str();
+				if(g_Config.m_RcMessageFilterMultiplyChangeWordOnPartialMatch)
+				{
+					size_t CharCount = 0;
+					size_t BytesCount = 0;
+					str_utf8_stats(to_delete.c_str(), to_delete.size(), to_delete.size(), &BytesCount, &CharCount);
+					if(strlen(g_Config.m_RcMessageFilterWordOnPartialMatch) < 2)
+					{
+						text.replace(start, to_delete.length(), CharCount + 1, g_Config.m_RcMessageFilterWordOnPartialMatch[0]);
+						pFound = str_utf8_find_nocase(text.c_str() + start + CharCount + 1, to_delete.c_str());
+					}
+					else
+					{
+						std::string to_change;
+						to_change.reserve((CharCount + 1) * strlen(g_Config.m_RcMessageFilterWordOnPartialMatch));
+						for(size_t j = 0; j < CharCount + 1; j++)
+							to_change += g_Config.m_RcMessageFilterWordOnPartialMatch;
+						text.replace(start, to_delete.length(), to_change);
+						pFound = str_utf8_find_nocase(text.c_str() + start + to_change.size(), to_delete.c_str());
+					}
+				}
+				else
+				{
+					text.replace(start, to_delete.length(), g_Config.m_RcMessageFilterWordOnPartialMatch);
+					pFound = str_utf8_find_nocase(text.c_str() + start + strlen(g_Config.m_RcMessageFilterWordOnPartialMatch), to_delete.c_str());
+				}
+			}
+		}
+		if(CensorFoundInMessage && IsChat && g_Config.m_RcMessageFilterPrintBlockedMessage)
+		{
+			std::string BlockedMessage;
+			if(ClientId != -1)
+			{
+				BlockedMessage += GameClient()->m_aClients[ClientId].m_aName;
+				BlockedMessage += " said ";
+			}
+			else
+			{
+				BlockedMessage += "Server said ";
+			}
+			BlockedMessage += Message;
+			GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "CensorList", BlockedMessage.c_str(), g_Config.m_RcMessageFilterPrintBlockedMessageColor);
+		}
+		if(m_FilteredMessagesCache.size() > 512)
+			m_FilteredMessagesCache.clear();
+		auto [It, _] = m_FilteredMessagesCache.try_emplace(Message, std::move(text));
+		return It->second.c_str();
+	}
+	if(g_Config.m_RcMessageFilterMode == 2)
+	{
+		for(size_t i = 0; i < CensorWordsList.size(); i++)
+		{
+			std::string to_delete{CensorWordsList[i]};
+			const char *pFound = str_utf8_find_nocase(text.c_str(), to_delete.c_str());
+			while(pFound)
+			{
+				CensorFoundInMessage = true;
+				size_t start = pFound - text.c_str();
+				size_t word_start = text.find_last_of(' ', start);
+				if(word_start == std::string::npos)
+					word_start = 0;
+				else word_start++;
+				size_t word_end = text.find_first_of(' ', start + to_delete.length());
+				if(word_end == std::string::npos)
+					word_end = text.length();
+				if(g_Config.m_RcMessageFilterMultiplyChangeWordOnFullMatch)
+				{
+					size_t CharCount = 0;
+					size_t BytesCount = 0;
+					str_utf8_stats(text.c_str() + word_start, word_end - word_start, word_end - word_start, &BytesCount, &CharCount);
+					if(strlen(g_Config.m_RcMessageFilterWordOnFullMatch) < 2)
+					{
+						text.replace(word_start, word_end - word_start, CharCount + 1, g_Config.m_RcMessageFilterWordOnFullMatch[0]);
+						pFound = str_utf8_find_nocase(text.c_str() + word_start + (CharCount + 1), to_delete.c_str());
+					}
+					else
+					{
+						std::string to_change;
+						to_change.reserve((CharCount + 1) * strlen(g_Config.m_RcMessageFilterWordOnFullMatch));
+						for(size_t j = 0; j < CharCount + 1; j++)
+							to_change += g_Config.m_RcMessageFilterWordOnFullMatch;
+						text.replace(word_start, word_end - word_start, to_change);
+						pFound = str_utf8_find_nocase(text.c_str() + word_start + to_change.size(), to_delete.c_str());
+					}
+				}
+				else
+				{
+					text.replace(word_start, word_end - word_start, g_Config.m_RcMessageFilterWordOnFullMatch);
+					pFound = str_utf8_find_nocase(text.c_str() + word_start + strlen(g_Config.m_RcMessageFilterWordOnFullMatch), to_delete.c_str());
+				}
+			}
+		}
+		if(CensorFoundInMessage && IsChat && g_Config.m_RcMessageFilterPrintBlockedMessage)
+		{
+			std::string BlockedMessage;
+			if(ClientId != -1)
+			{
+				BlockedMessage += GameClient()->m_aClients[ClientId].m_aName;
+				BlockedMessage += " said ";
+			}
+			else
+			{
+				BlockedMessage += "Server said ";
+			}
+			BlockedMessage += Message;
+			GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "CensorList", BlockedMessage.c_str(), g_Config.m_RcMessageFilterPrintBlockedMessageColor);
+		}
+		if(m_FilteredMessagesCache.size() > 512)
+			m_FilteredMessagesCache.clear();
+		auto [It, _] = m_FilteredMessagesCache.try_emplace(Message, std::move(text));
+		return It->second.c_str();
+	}
+	if(g_Config.m_RcMessageFilterMode == 3)
+	{
+		for(size_t i = 0; i < CensorWordsList.size(); i++)
+		{
+			std::string to_delete{CensorWordsList[i]};
+			const char *pFound = str_utf8_find_nocase(text.c_str(), to_delete.c_str());
+			while(pFound)
+			{
+				CensorFoundInMessage = true;
+				size_t start = pFound - text.c_str();
+				size_t word_start = text.find_last_of(' ', start);
+				if(word_start == std::string::npos)
+					word_start = 0;
+				else word_start++;
+				size_t word_end = text.find_first_of(' ', start + to_delete.length());
+				if(word_end == std::string::npos)
+					word_end = text.length();
+				if(!str_utf8_comp_nocase(text.c_str() + word_start, to_delete.c_str()))
+				{
+					if(g_Config.m_RcMessageFilterMultiplyChangeWordOnFullMatch)
+					{
+						size_t CharCount = 0;
+						size_t BytesCount = 0;
+						str_utf8_stats(text.c_str() + word_start, word_end - word_start, word_end - word_start, &BytesCount, &CharCount);
+						if(strlen(g_Config.m_RcMessageFilterWordOnFullMatch) < 2)
+						{
+							text.replace(word_start, word_end - word_start, CharCount + 1, g_Config.m_RcMessageFilterWordOnFullMatch[0]);
+							pFound = str_utf8_find_nocase(text.c_str() + word_start + (CharCount + 1), to_delete.c_str());
+						}
+						else
+						{
+							std::string to_change;
+							to_change.reserve((CharCount + 1) * strlen(g_Config.m_RcMessageFilterWordOnFullMatch));
+							for(size_t j = 0; j < CharCount + 1; j++)
+								to_change += g_Config.m_RcMessageFilterWordOnFullMatch;
+							text.replace(word_start, word_end - word_start, to_change);
+							pFound = str_utf8_find_nocase(text.c_str() + word_start + to_change.size(), to_delete.c_str());
+						}
+					}
+					else
+					{
+						text.replace(word_start, word_end - word_start, g_Config.m_RcMessageFilterWordOnFullMatch);
+						pFound = str_utf8_find_nocase(text.c_str() + word_start + strlen(g_Config.m_RcMessageFilterWordOnFullMatch), to_delete.c_str());
+					}
+				}
+				else
+				{
+					if(g_Config.m_RcMessageFilterMultiplyChangeWordOnPartialMatch)
+					{
+						size_t CharCount = 0;
+						size_t BytesCount = 0;
+						str_utf8_stats(to_delete.c_str(), to_delete.size(), to_delete.size(), &BytesCount, &CharCount);
+						if(strlen(g_Config.m_RcMessageFilterWordOnPartialMatch) < 2)
+						{
+							text.replace(start, to_delete.length(), CharCount + 1, g_Config.m_RcMessageFilterWordOnPartialMatch[0]);
+							pFound = str_utf8_find_nocase(text.c_str() + start + (CharCount + 1), to_delete.c_str());
+						}
+						else
+						{
+							std::string to_change;
+							to_change.reserve((CharCount + 1) * strlen(g_Config.m_RcMessageFilterWordOnPartialMatch));
+							for(size_t j = 0; j < CharCount + 1; j++)
+								to_change += g_Config.m_RcMessageFilterWordOnPartialMatch;
+							text.replace(start, to_delete.length(), to_change);
+							pFound = str_utf8_find_nocase(text.c_str() + start + to_change.size(), to_delete.c_str());
+						}
+					}
+					else
+					{
+						text.replace(start, to_delete.length(), g_Config.m_RcMessageFilterWordOnPartialMatch);
+						pFound = str_utf8_find_nocase(text.c_str() + start + strlen(g_Config.m_RcMessageFilterWordOnPartialMatch), to_delete.c_str());
+					}
+				}
+			}
+		}
+		if(CensorFoundInMessage && IsChat && g_Config.m_RcMessageFilterPrintBlockedMessage)
+		{
+			std::string BlockedMessage;
+			if(ClientId != -1)
+			{
+				BlockedMessage += GameClient()->m_aClients[ClientId].m_aName;
+				BlockedMessage += " said ";
+			}
+			else
+			{
+				BlockedMessage += "Server said ";
+			}
+			BlockedMessage += Message;
+			GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "CensorList", BlockedMessage.c_str(), g_Config.m_RcMessageFilterPrintBlockedMessageColor);
+		}
+		if(m_FilteredMessagesCache.size() > 512)
+			m_FilteredMessagesCache.clear();
+		auto [It, _] = m_FilteredMessagesCache.try_emplace(Message, std::move(text));
+		return It->second.c_str();
+	}
+	return Message;
+}
+
+// Translated
+CRClient::CLineTranslate::CLineTranslate()
+{
+	m_aText[0] = '\0';
+	m_WorkId = -1;
+	m_JobIntVariable = -1;
+}
+
+void CRClient::DoTranslateWork(CTranslateResponse &TranslatedClass, CLineTranslate &LineForTranslate)
+{
+	if(TranslatedClass.m_Error)
+	{
+		FastPrint(GameClient(), "Translate", TranslatedClass.m_Text);
+		FastEcho(GameClient(), "Error, check console");
+		return;
+	}
+
+	if(LineForTranslate.m_WorkId == 0)
+	{
+		GameClient()->m_Chat.SendChat(LineForTranslate.m_JobIntVariable, TranslatedClass.m_Text, true);
+	}
+
+}
+
+// WarList
+bool CRClient::IsInWarlist(int ClientId, int Index)
+{
+	CWarDataCache &WarData = GameClient()->m_WarList.m_WarPlayers[ClientId];
+	for(size_t i = 0; i < WarData.m_WarGroupMatches.size(); i++)
+	{
+		if(WarData.m_WarGroupMatches[i])
+		{
+			if(Index == (int)i)
+				return true;
+		}
+	}
+	return false;
+}
+
+// FindHours
+void CRClient::ConPlayerFindHours(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	pSelf->FetchRclientDDstatsFindHours(TrimRight(pResult->GetString(0)).c_str(), pResult->GetString(1));
+}
+
+void CRClient::FetchRclientDDstatsFindHours(const char *PlayerNickname, const char *WriteInChat)
+{
+	if(m_pRClientDDstatsTaskFindHours && !m_pRClientDDstatsTaskFindHours->Done())
+		return;
+	char aUrl[256];
+	char Nickname[256];
+	EscapeUrl(Nickname, sizeof(Nickname), PlayerNickname);
+	if(!str_find_nocase("w", WriteInChat))
+		FindHoursWriteInChat = true;
+	else
+		FindHoursWriteInChat = false;
+	str_format(aUrl, sizeof(aUrl), "https://ddstats.tw/player/json?player=%s", Nickname);
+	m_pRClientDDstatsTaskFindHours = HttpGet(aUrl);
+	m_pRClientDDstatsTaskFindHours->Timeout(CTimeout{10000, 0, 500, 10});
+	m_pRClientDDstatsTaskFindHours->IpResolve(IPRESOLVE::V4);
+	Http()->Run(m_pRClientDDstatsTaskFindHours);
+}
+
+void CRClient::FinishRclientDDstatsFindHours()
+{
+	json_value *pJson = m_pRClientDDstatsTaskFindHours->ResultJson();
+	if(!pJson)
+		return;
+	const json_value Json = *pJson;
+	const json_value *General = json_object_get(&Json, "general_activity");
+	const json_value *Profile = json_object_get(&Json, "profile");
+	if(General->type == json_object && Profile->type == json_object)
+	{
+		const json_value *Seconds = json_object_get(General, "total_seconds_played");
+		const json_value *Points = json_object_get(Profile, "points");
+		const json_value *NicknameJson = json_object_get(Profile, "name");
+		if(Seconds->type == json_integer && Points->type == json_integer && NicknameJson->type == json_string)
+		{
+			int Hours = Seconds->u.integer / 3600;
+			int PointsFinal = Points->u.integer;
+			const char *Nickname = NicknameJson->u.string.ptr;
+			char aBuf[128];
+			str_format(aBuf, sizeof(aBuf), "Player %s has %d hours and %d points", Nickname, Hours, PointsFinal);
+			GameClient()->Echo(aBuf);
+			if(FindHoursWriteInChat)
+				GameClient()->m_Chat.SendChat(0, aBuf);
+			Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "FindHours", aBuf);
+		}
+		else
+		{
+			GameClient()->Echo("Invalid 'total_seconds_played' in JSON");
+			Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "FindHours", "Invalid 'total_seconds_played' in JSON");
+		}
+	}
+	else
+	{
+		GameClient()->Echo("Invalid 'general_activity' in JSON");
+		Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "FindHours", "Invalid 'general_activity' in JSON");
+	}
+	json_value_free(pJson);
+}
+
+void CRClient::ResetRclientDDstatsFindHours()
+{
+	if(m_pRClientDDstatsTaskFindHours)
+	{
+		m_pRClientDDstatsTaskFindHours->Abort();
+		m_pRClientDDstatsTaskFindHours = NULL;
+	}
+}
+
+// FindHours
+void CRClient::ConPlayerFindTime(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	int Args = pResult->NumArguments();
+	char aBuf[256];
+	for(int i = 0; i < Args - 1; i++)
+	{
+		if(!i)
+			str_copy(aBuf, pResult->GetString(1));
+		else
+			str_format(aBuf, sizeof(aBuf), "%s %s", aBuf, pResult->GetString(i + 1));
+	}
+	pSelf->FetchRclientDDstatsFindTime(TrimRight(pResult->GetString(0)).c_str(), aBuf);
+}
+
+void CRClient::FetchRclientDDstatsFindTime(const char *PlayerNickname, const char *MapName)
+{
+	if(m_pRClientDDstatsTaskFindTime && !m_pRClientDDstatsTaskFindTime->Done())
+		return;
+	char aUrl[256];
+	char Nickname[256];
+	EscapeUrl(Nickname, sizeof(Nickname), PlayerNickname);
+	str_copy(MapNameH, MapName);
+	str_format(aUrl, sizeof(aUrl), "https://ddstats.tw/player/json?player=%s", Nickname);
+	m_pRClientDDstatsTaskFindTime = HttpGet(aUrl);
+	m_pRClientDDstatsTaskFindTime->Timeout(CTimeout{10000, 0, 500, 10});
+	m_pRClientDDstatsTaskFindTime->IpResolve(IPRESOLVE::V4);
+	Http()->Run(m_pRClientDDstatsTaskFindTime);
+}
+
+void CRClient::FinishRclientDDstatsFindTime()
+{
+	json_value *pJson = m_pRClientDDstatsTaskFindTime->ResultJson();
+	if(!pJson)
+		return;
+	const json_value Json = *pJson;
+	const json_value *Finishes = json_object_get(&Json, "finishes");
+	const json_value *PlayerNickname = json_object_get(json_object_get(&Json, "profile"), "name");
+	if(Finishes->type == json_array && PlayerNickname->type == json_string)
+	{
+		bool FoundFinish = false;
+		for(int i = 0; i < json_array_length(Finishes); i++)
+		{
+			const json_value *Finish = json_array_get(Finishes, i);
+			const json_value *MapInfo = json_object_get(Finish, "map");
+			if(MapInfo->type == json_object && json_object_get(MapInfo, "map")->type == json_string)
+			{
+				const char *MapNameStr = json_object_get(MapInfo, "map")->u.string.ptr;
+				if(str_find_nocase(MapNameStr, MapNameH))
+				{
+					const json_value *Time = json_object_get(Finish, "time");
+					const json_value *Rank = json_object_get(Finish, "rank");
+					if(Time->type == json_double && Rank->type == json_integer)
+					{
+						int TimeInCentiSeconds = Time->u.dbl * 100;
+						int Hours = TimeInCentiSeconds / 360000;
+						int Minutes = TimeInCentiSeconds % 360000 / 6000;
+						int Seconds = TimeInCentiSeconds % 6000 / 100;
+						int Centi = TimeInCentiSeconds % 100;
+						int Rankint = Rank->u.integer;
+						char aBuf[128];
+						str_format(aBuf, sizeof(aBuf), "%s finished %s for %02i:%02i:%02i.%02i. Global rank: %i", PlayerNickname->u.string.ptr, MapNameStr, Hours, Minutes, Seconds, Centi, Rankint);
+						GameClient()->Echo(aBuf);
+						Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "FindTime", aBuf);
+						FoundFinish = true;
+						break;
+					}
+				}
+			}
+		}
+		if(!FoundFinish)
+		{
+			char aBuf[128];
+			str_format(aBuf, sizeof(aBuf), "Map %s not found for %s", MapNameH, PlayerNickname->u.string.ptr);
+			GameClient()->Echo(aBuf);
+			Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "FindTime", aBuf);
+		}
+	}
+	else
+	{
+		GameClient()->Echo("Player or finishes not found");
+		Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "FindTime", "Player or finishes not found");
+	}
+	json_value_free(pJson);
+}
+
+void CRClient::ResetRclientDDstatsFindTime()
+{
+	if(m_pRClientDDstatsTaskFindTime)
+	{
+		m_pRClientDDstatsTaskFindTime->Abort();
+		m_pRClientDDstatsTaskFindTime = NULL;
+	}
+}
+
+// Scoreboard/Chat height
+float CRClient::GetScoreboardHeight(bool IsDefaultRender ,bool IsBigger, int ClientId)
+{
+	// Default: m_ScoreboardPopupContext.m_IsLocal ? 30.0f : 60.0f
+	// Default: m_ScoreboardPopupContext.m_IsLocal ? 58.5f : 87.5f
+	constexpr float OuterPopupPadding = 2.0f * (1.0f + 4.0f); // popup border + margin on both sides
+	constexpr float InnerMargin = 10.0f; // View.Margin(5.0f) inside PopupScoreboard
+	constexpr float LabelHeight = 12.0f;
+	constexpr float ItemSpacing = 2.0f;
+	constexpr float ButtonHeight = 17.5f;
+	constexpr float QuickActionHeight = 25.0f + ItemSpacing * 2.0f; // height of one quick-action row including spacing
+
+	const int LocalId = GameClient()->m_aLocalIds[g_Config.m_ClDummy];
+	const int LocalTeam = GameClient()->m_Teams.Team(LocalId);
+	const int TargetTeam = GameClient()->m_Teams.Team(ClientId);
+	const bool LocalInTeam = LocalTeam != TEAM_FLOCK && LocalTeam != TEAM_SUPER;
+	const bool TargetInTeam = TargetTeam != TEAM_FLOCK && TargetTeam != TEAM_SUPER;
+	const bool LocalIsTarget = LocalId == ClientId;
+	int ExtraButtonRows = 0;
+	if(LocalInTeam && LocalTeam == TargetTeam)
+		ExtraButtonRows++; // Exit
+	if(TargetInTeam && LocalTeam != TargetTeam)
+		ExtraButtonRows++; // Join
+	if(LocalInTeam && TargetTeam != LocalTeam)
+		ExtraButtonRows++; // Invite
+	if(!LocalIsTarget && LocalInTeam && TargetTeam == LocalTeam)
+		ExtraButtonRows++; // Kick
+	if(LocalInTeam && LocalTeam == TargetTeam)
+		ExtraButtonRows++; // Lock
+
+	// Both popup entry points currently render the same stack of buttons.
+	const int ButtonRows = (IsDefaultRender ? 8 : 7) + ExtraButtonRows;
+
+	float ScoreboardHeight = OuterPopupPadding + InnerMargin + LabelHeight;
+	if(IsBigger)
+	{
+		ScoreboardHeight += QuickActionHeight * 2.0f; // friend/mute/emote + tracker/team/war
+	}
+	ScoreboardHeight += ButtonRows * (ButtonHeight + ItemSpacing * 2.0f);
+
+	if (ExtraButtonRows != 0)
+		ScoreboardHeight += ItemSpacing * 4.0f;
+
+	return ScoreboardHeight;
+}
+
+float CRClient::GetChatHeight(int ClientId)
+{
+	constexpr float PopupMargin = 2.0f;
+	constexpr float FontSize = 6.0f;
+	constexpr float ItemSpacing = 1.0f;
+	constexpr float ButtonSize = 17.5f / 2.0f;
+	constexpr float ActionSize = 22.5f / 2.0f;
+
+	const bool IsServer = ClientId < 0;
+	const int ButtonsCount = IsServer ? 3 : 6;
+	float ResultSize = 0.0f;
+	ResultSize += PopupMargin * 2;
+	ResultSize += FontSize;
+	for(int i = 0; i < ButtonsCount; i++)
+	{
+		ResultSize += ItemSpacing + ButtonSize;
+	}
+	if(!IsServer)
+		ResultSize += ActionSize + ItemSpacing;
+
+	return ResultSize;
+}
+
+int CRClient::GetCheckpointId()
+{
+	int PlayerId = -1;
+	if(GameClient()->m_Snap.m_SpecInfo.m_SpectatorId != SPEC_FREEVIEW && GameClient()->m_Snap.m_SpecInfo.m_Active)
+	{
+		const auto &Player = GameClient()->m_aClients[GameClient()->m_Snap.m_SpecInfo.m_SpectatorId];
+		PlayerId = Player.ClientId();
+	}
+	else if(!GameClient()->m_Snap.m_SpecInfo.m_Active)
+		PlayerId = GameClient()->m_Snap.m_LocalClientId;
+
+	if(PlayerId != -1)
+	{
+		const auto &Char = GameClient()->m_Snap.m_aCharacters[PlayerId];
+		if(!Char.m_Active || !Char.m_HasExtendedData)
+			return -1;
+		return Char.m_ExtendedData.m_TeleCheckpoint;
+	}
+
+	return -1;
+}
+
+const char *CRClient::FixLayoutLine(const char *Line)
+{
+	if(Line[0] != '/' && Line[0] != '.')
+		return Line;
+
+	if(auto It = m_FixLayoutListCache.find(Line); It != m_FixLayoutListCache.end())
+		return It->second.c_str();
+
+	std::string OutString;
+	const char *pIn = Line;
+
+	while(*pIn != '\0' && *pIn != ' ')
+	{
+		const ChatThings::SChatLetter *pKey = nullptr;
+		for(const ChatThings::SChatLetter &Key : ChatThings::s_aLineLayout)
+		{
+			if(str_utf8_comp_nocase_num(pIn, Key.m_pWrongLetter, str_length(Key.m_pWrongLetter)) == 0)
+			{
+				pKey = &Key;
+				break;
+			}
+		}
+
+		if(pKey == nullptr)
+		{
+			OutString += *pIn;
+			pIn++;
+		}
+		else
+		{
+			OutString += pKey->m_LetterEnglish;
+			pIn += str_length(pKey->m_pWrongLetter);
+		}
+	}
+
+	OutString += pIn;
+	if(m_FixLayoutListCache.size() > 256)
+		m_FixLayoutListCache.clear();
+	auto [It, _] = m_FixLayoutListCache.try_emplace(Line, std::move(OutString));
+	return It->second.c_str();
+}
+
+void CRClient::ResetRClientChatBinds()
+{
+	for(const auto &[_, vBindDefaults] : CBindChat::BIND_DEFAULTS_RCLIENT)
+		for(const CBindChat::CBindDefault &BindDefault : vBindDefaults)
+		{
+			GameClient()->m_BindChat.RemoveBind(BindDefault.m_Bind.m_aName);
+			RemoveChatBindCommand(BindDefault.m_Bind.m_aCommand);
+			GameClient()->m_BindChat.AddBind(BindDefault.m_Bind);
+		}
+}
+
+bool CRClient::RemoveChatBindCommand(const char *pCommand)
+{
+	for(auto It = GameClient()->m_BindChat.m_vBinds.begin(); It != GameClient()->m_BindChat.m_vBinds.end(); ++It)
+	{
+		if(str_comp(It->m_aCommand, pCommand) == 0)
+		{
+			GameClient()->m_BindChat.m_vBinds.erase(It);
+			return true;
+		}
+	}
+	return false;
+}
+
+// Aspect Ratio
+void CRClient::ConForceAspect(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	pSelf->SetForcedAspectRatio();
+}
+
+void CRClient::SetForcedAspectRatio()
+{
+	int State = Client()->State();
+	bool Allow = g_Config.m_RcCustomAspectEnabled;
+	if(State == CClient::EClientState::STATE_ONLINE && !GameClient()->m_GameInfo.m_AllowZoom)
+		Allow = false;
+	Graphics()->SetForcedAspectRatio(g_Config.m_RcCustomAspectX, g_Config.m_RcCustomAspectY, Allow);
+}
+
+// Translate
+void CRClient::AddNewLanguage(ChatThings::STranslateLangs Lang)
+{
+	for(ChatThings::STranslateLangs Item : m_LatestLangsList)
+	{
+		if(!str_utf8_comp_nocase(Lang.m_LangCode, Item.m_LangCode))
+		{
+			return;
+		}
+	}
+	m_LatestLangsList.push_back(Lang);
+	if(m_LatestLangsList.size() > 5)
+		m_LatestLangsList.erase(m_LatestLangsList.cbegin());
+
+	s_LangDropDownNames.clear();
+	for(ChatThings::STranslateLangs Item : m_LatestLangsList)
+		s_LangDropDownNames.push_back(Item.m_LangName);
+}
+
+ChatThings::STranslateLangs CRClient::GetLanguageName(const char *pCode)
+{
+	for(ChatThings::STranslateLangs item : ChatThings::g_LangsList)
+	{
+		if(!str_utf8_comp_nocase(pCode, item.m_LangCode))
+		{
+			return item;
+		}
+	}
+	return ChatThings::g_EmptyLang;
+}
+
+void CRClient::ResetLanguages()
+{
+	m_LatestLangsList.clear();
+	for(const char *LangCode : ChatThings::g_LangsListDefaultCodes)
+	{
+		AddNewLanguage(GetLanguageName(LangCode));
+	}
+}
+
+void CRClient::ConAddLanguage(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	const char *pLangCode = pResult->GetString(0);
+	const ChatThings::STranslateLangs pLang = pThis->GetLanguageName(pLangCode);
+	if(pLang.m_LangCode[0] == '\0')
+	{
+		pThis->GameClient()->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "Translate", "Unknown language code. Use ISO 639-1 (e.g. ru, en, de)");
+	}
+	else
+		pThis->AddNewLanguage(pLang);
+}
+
+void CRClient::ConResetLanguages(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	pThis->ResetLanguages();
+}
+
+void CRClient::ChatCheckingMessages(CNetMsg_Sv_Chat *pMsg)
+{
+	if(pMsg->m_ClientId == -1)
+	{
+		if(g_Config.m_RcAutoLockTeam)
+		{
+			char aBuf[128];
+			str_format(aBuf, sizeof(aBuf), "\'%s\' joined team ", g_Config.m_ClDummy ? g_Config.m_ClDummyName : g_Config.m_PlayerName);
+			if(str_utf8_find_nocase(pMsg->m_pMessage ,aBuf))
+			{
+				const int Team = GameClient()->m_Teams.Team(GameClient()->m_Snap.m_LocalClientId);
+				if(Team != 0)
+				{
+					if(g_Config.m_RcAutoLockTeam == 1)
+					{
+						int TeamSize = 0;
+						for(int i = 0; i < MAX_CLIENTS; i++)
+						{
+							if(GameClient()->m_aClients[i].m_Active && GameClient()->m_Teams.Team(i) == Team)
+								TeamSize++;
+						}
+						if(TeamSize == 1)
+						{
+							GameClient()->m_Chat.SendChat(0, "/lock 1");
+						}
+					}
+					else
+						GameClient()->m_Chat.SendChat(0, "/lock 1");
+				}
+			}
+		}
+	}
+}
+
+bool CRClient::AntiUnSpec()
+{
+	// true - return
+	const int LocalClientId = GameClient()->m_Snap.m_LocalClientId;
+	if(LocalClientId < 0)
+		return false;
+	if(!g_Config.m_RcAntiUnSpec)
+		return false;
+	if(GameClient()->m_aClients[LocalClientId].m_Spec)
+	{
+		bool CanCollidePhysical = false;
+		vec2 LocalPlayerPos = GameClient()->m_aClients[LocalClientId].m_RegularPredicted.m_Pos;
+		if(GameClient()->m_aClients[LocalClientId].m_SpecCharPresent)
+			LocalPlayerPos = GameClient()->m_aClients[LocalClientId].m_SpecChar;
+
+		for(int i = 0; i < MAX_CLIENTS; i++)
+		{
+			if(i == GameClient()->m_aLocalIds[g_Config.m_ClDummy] || i == GameClient()->m_aLocalIds[!g_Config.m_ClDummy])
+				continue;
+
+			if(!GameClient()->m_aClients[i].m_Active ||GameClient()->m_aClients[i].m_Spec)
+				continue;
+
+			bool PlTeamCanCollide = !GameClient()->m_aClients[LocalClientId].m_CollisionDisabled && !GameClient()->m_aClients[i].m_CollisionDisabled
+						&& GameClient()->m_aTuning[g_Config.m_ClDummy].m_PlayerCollision
+						&& GameClient()->m_Teams.CanCollide(LocalClientId, i);
+			if(!PlTeamCanCollide)
+				continue;
+
+			const CNetObj_Character CurPlayer = GameClient()->m_Snap.m_aCharacters[i].m_Cur;
+			const vec2 CurPlayerPos = vec2(CurPlayer.m_X, CurPlayer.m_Y);
+			float Dist = distance(CurPlayerPos, LocalPlayerPos);
+			if(PlTeamCanCollide && Dist < CCharacterCore::PhysicalSize() * 1.25f)
+				CanCollidePhysical = true;
+		}
+
+		if(CanCollidePhysical)
+		{
+			if(ConfirmUnSpec)
+			{
+				ConfirmUnSpec = false;
+				return false;
+			}
+			else
+			{
+				GameClient()->Echo("Are u sure want unspec? Press again to unspec");
+				ConfirmUnSpec = true;
+				return true;
+			}
+		}
+	}
+
+	ConfirmUnSpec = false;
+	return false;
+}
+
+// Sorting
+const CNetObj_PlayerInfo *CRClient::GetSortedPlayersScoreboard(int SwitchNum, int ClientId)
+{
+	switch(SwitchNum)
+	{
+	case 0: return GameClient()->m_Snap.m_apInfoByDDTeamScore[ClientId];
+	case 1: return GameClient()->m_Snap.m_apInfoByDDTeamScoreId[ClientId];
+	case 2: return GameClient()->m_Snap.m_apInfoByScoreWithId[ClientId];
+	case 3: return GameClient()->m_Snap.m_apInfoByDDTeamId[ClientId];
+	case 4: return GameClient()->m_Snap.m_apPlayerInfos[ClientId];
+	default: return GameClient()->m_Snap.m_apInfoByDDTeamScore[ClientId];
+	}
+}
+
+const CNetObj_PlayerInfo *CRClient::GetSortedPlayersSpectator(int SwitchNum, int ClientId)
+{
+	switch(SwitchNum)
+	{
+	case 0: return GameClient()->m_Snap.m_apInfoByDDTeamName[ClientId];
+	case 1: return GameClient()->m_Snap.m_apInfoByDDTeamId[ClientId];
+	case 2: return GameClient()->m_Snap.m_apPlayerInfos[ClientId];
+	default: return GameClient()->m_Snap.m_apInfoByDDTeamName[ClientId];
+	}
+}
+
+const CNetObj_PlayerInfo **CRClient::GetSortedPlayersSpectatorArray(int SwitchNum)
+{
+	switch(SwitchNum)
+	{
+	case 0: return GameClient()->m_Snap.m_apInfoByDDTeamName;
+	case 1: return GameClient()->m_Snap.m_apInfoByDDTeamId;
+	case 2: return GameClient()->m_Snap.m_apPlayerInfos;
+	default: return GameClient()->m_Snap.m_apInfoByDDTeamName;
+	}
+}
+
+//Find checkpoint
+void CRClient::ConGotoTeleCursor(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	if(pSelf->GameClient()->m_Snap.m_SpecInfo.m_SpectatorId != SPEC_FREEVIEW || !pSelf->GameClient()->m_Snap.m_SpecInfo.m_Active)
+	{
+		pSelf->GameClient()->Echo("You're not in freeview spectating");
+		return;
+	}
+
+	CCollision *pCollision = pSelf->GameClient()->Collision();
+	if(pCollision->TeleLayer() == nullptr)
+		return;
+
+	const int Width = pCollision->GetWidth();
+	const int Height = pCollision->GetHeight();
+	const vec2 Center = pSelf->GameClient()->m_Camera.m_Center;
+	const ivec2 CenterTile = ivec2(round_to_int(Center.x / 32.0f), round_to_int(Center.y / 32.0f));
+
+	const CTeleTile *pTele = pCollision->TeleLayer();
+	bool FoundTele = false;
+	CTeleTile TeleTile{};
+	float BestTeleDist = -1.0f;
+	for(int y = CenterTile.y - 1; y <= CenterTile.y + 1; y++)
+	{
+		if(y < 0 || y >= Height)
+			continue;
+		for(int x = CenterTile.x - 1; x <= CenterTile.x + 1; x++)
+		{
+			if(x < 0 || x >= Width)
+				continue;
+			const int TileIndex = y * Width + x;
+			const CTeleTile &Tile = pTele[TileIndex];
+			if(Tile.m_Number <= 0 || Tile.m_Type <= 0)
+				continue;
+			const vec2 Pos = vec2(x * 32.0f + 16.0f, y * 32.0f + 16.0f);
+			const float Dist = distance(Pos, Center);
+			if(BestTeleDist < 0.0f || Dist < BestTeleDist)
+			{
+				BestTeleDist = Dist;
+				TeleTile = Tile;
+				FoundTele = true;
+			}
+		}
+	}
+
+	if(!FoundTele)
+	{
+		pSelf->GameClient()->Echo("No teleporter near cursor");
+		return;
+	}
+
+	const int Type = TeleTile.m_Type;
+
+	std::vector<ivec2> Targets;
+
+	auto IsTypeAny = [](int Value, const int *Types, size_t Count) {
+		for(size_t i = 0; i < Count; i++)
+		{
+			if(Value == Types[i])
+				return true;
+		}
+		return false;
+	};
+
+	auto CollectTargets = [&](const int *Types, size_t Count) {
+		Targets.clear();
+		for(int y = 0; y < Height; y++)
+		{
+			for(int x = 0; x < Width; x++)
+			{
+				const int TileIndex = y * Width + x;
+				const CTeleTile &Tile = pTele[TileIndex];
+				bool Match = false;
+				for(size_t i = 0; i < Count; i++)
+				{
+					if(Tile.m_Type == Types[i]) { Match = true; break; }
+				}
+				if(Tile.m_Number == TeleTile.m_Number && Match)
+					Targets.emplace_back(x, y);
+			}
+		}
+	};
+
+	const int TeleOutTypes[] = {TILE_TELEOUT};
+	const int TeleCheckOut[] = {TILE_TELECHECKOUT};
+	const int TeleIn[] = {TILE_TELEIN, TILE_TELEINEVIL, TILE_TELEINWEAPON, TILE_TELEINHOOK};
+	const int TeleCheckIn[] = {TILE_TELECHECK, TILE_TELECHECKIN, TILE_TELECHECKINEVIL};
+
+	const bool IsTeleOut = IsTypeAny(Type, TeleOutTypes, std::size(TeleOutTypes));
+	const bool IsTeleCheckOut = IsTypeAny(Type, TeleCheckOut, std::size(TeleCheckOut));
+	const bool IsTeleIn = IsTypeAny(Type, TeleIn, std::size(TeleIn));
+	const bool IsTeleCheckIn = IsTypeAny(Type, TeleCheckIn, std::size(TeleCheckIn));
+
+	if(IsTeleOut)
+	{
+		CollectTargets(TeleIn, std::size(TeleIn));
+	}
+	else if(IsTeleCheckOut)
+	{
+		CollectTargets(TeleCheckIn, std::size(TeleCheckIn));
+		if(Targets.empty())
+			CollectTargets(TeleIn, std::size(TeleIn));
+	}
+	else if(IsTeleCheckIn)
+	{
+		CollectTargets(TeleCheckOut, std::size(TeleCheckOut));
+	}
+	else if(IsTeleIn)
+	{
+		CollectTargets(TeleOutTypes, std::size(TeleOutTypes));
+		if(Targets.empty())
+			CollectTargets(TeleCheckOut, std::size(TeleCheckOut));
+	}
+
+	if(Targets.empty())
+	{
+		pSelf->GameClient()->Echo("No teleporter destination found");
+		return;
+	}
+
+	int BestIndex = 0;
+	float BestDist = -1.0f;
+	for(int i = 0; i < (int)Targets.size(); i++)
+	{
+		const vec2 Pos = vec2(Targets[i].x * 32.0f + 16.0f, Targets[i].y * 32.0f + 16.0f);
+		const float Dist = distance(Pos, Center);
+		if(BestDist < 0.0f || Dist < BestDist)
+		{
+			BestDist = Dist;
+			BestIndex = i;
+		}
+	}
+
+	const vec2 TargetPos = vec2(Targets[BestIndex].x * 32.0f + 16.0f, Targets[BestIndex].y * 32.0f + 16.0f);
+	pSelf->GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy] = TargetPos;
+}
+
+void CRClient::ConGotoFinishCursor(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	if(pSelf->GameClient()->m_Snap.m_SpecInfo.m_SpectatorId != SPEC_FREEVIEW || !pSelf->GameClient()->m_Snap.m_SpecInfo.m_Active)
+	{
+		pSelf->GameClient()->Echo("You're not in freeview spectating");
+		return;
+	}
+
+	CCollision *pCollision = pSelf->GameClient()->Collision();
+	if(!pCollision)
+		return;
+
+	const int Width = pCollision->GetWidth();
+	const int Height = pCollision->GetHeight();
+	const vec2 Center = pSelf->GameClient()->m_Camera.m_Center;
+	const ivec2 CenterTile = ivec2(round_to_int(Center.x / 32.0f), round_to_int(Center.y / 32.0f));
+
+	auto HasTile = [&](int Index, int Tile) -> bool {
+		return pCollision->GetTileIndex(Index) == Tile || pCollision->GetFrontTileIndex(Index) == Tile;
+	};
+
+	bool NearFinish = false;
+	for(int y = CenterTile.y - 1; y <= CenterTile.y + 1; y++)
+	{
+		if(y < 0 || y >= Height)
+			continue;
+		for(int x = CenterTile.x - 1; x <= CenterTile.x + 1; x++)
+		{
+			if(x < 0 || x >= Width)
+				continue;
+			const int TileIndex = y * Width + x;
+			if(HasTile(TileIndex, TILE_FINISH))
+			{
+				NearFinish = true;
+				break;
+			}
+		}
+	}
+
+	std::vector<ivec2> Targets;
+
+	auto CollectTargets = [&](const int SearchType) {
+		Targets.clear();
+		for(int y = 0; y < Height; y++)
+		{
+			for(int x = 0; x < Width; x++)
+			{
+				const int TileIndex = y * Width + x;
+				if(HasTile(TileIndex, SearchType))
+					Targets.emplace_back(x, y);
+			}
+		}
+	};
+
+	CollectTargets(NearFinish ? TILE_START : TILE_FINISH);
+
+	if(Targets.empty())
+	{
+		pSelf->GameClient()->Echo(NearFinish ? "No Start found" : "No Finish found");
+		return;
+	}
+
+	int BestIndex = 0;
+	float BestDist = -1.0f;
+	for(int i = 0; i < (int)Targets.size(); i++)
+	{
+		const vec2 Pos = vec2(Targets[i].x * 32.0f + 16.0f, Targets[i].y * 32.0f + 16.0f);
+		const float Dist = distance(Pos, Center);
+		if(BestDist < 0.0f || Dist < BestDist)
+		{
+			BestDist = Dist;
+			BestIndex = i;
+		}
+	}
+
+	const vec2 TargetPos = vec2(Targets[BestIndex].x * 32.0f + 16.0f, Targets[BestIndex].y * 32.0f + 16.0f);
+	pSelf->GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy] = TargetPos;
+}
+
+// Spectator move
+void CRClient::ConSpecGoUp(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	pSelf->m_SpecMoveUp = pResult->GetInteger(0) != 0;
+}
+
+void CRClient::ConSpecGoDown(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	pSelf->m_SpecMoveDown = pResult->GetInteger(0) != 0;
+}
+
+void CRClient::ConSpecGoRight(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	pSelf->m_SpecMoveRight = pResult->GetInteger(0) != 0;
+}
+
+void CRClient::ConSpecGoLeft(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = static_cast<CRClient *>(pUserData);
+	pSelf->m_SpecMoveLeft = pResult->GetInteger(0) != 0;
+}
+
+void CRClient::ConLaunchSecondClient(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pSelf = (CRClient *)pUserData;
+#if !defined(CONF_PLATFORM_ANDROID)
+	char aClientBinaryPath[IO_MAX_PATH_LENGTH];
+	pSelf->Storage()->GetBinaryPathAbsolute(PLAT_CLIENT_EXEC, aClientBinaryPath, sizeof(aClientBinaryPath));
+	const PROCESS Process = process_execute(aClientBinaryPath, EShellExecuteWindowState::FOREGROUND);
+	if(Process == INVALID_PROCESS)
+	{
+		log_error("rclient", "failed to launch second client from '%s'", aClientBinaryPath);
+		pSelf->GameClient()->Echo(Localize("Failed to launch second client. See local console for details."));
+		return;
+	}
+#else
+	log_warn("rclient", "launch_client is not supported on Android");
+	pSelf->GameClient()->Echo(Localize("Launching a second client is not supported on Android."));
+#endif
+}
+
+void CRClient::FetchRclientBCFetchList()
+{
+	if(m_pRClientBCFetchListTask && !m_pRClientBCFetchListTask->Done())
+		return;
+	const char *BCIp = "https://150.241.70.188:8779/users.json";
+	m_pRClientBCFetchListTask = HttpGet(BCIp);
+	m_pRClientBCFetchListTask->Timeout(CTimeout{10000, 0, 500, 10});
+	m_pRClientBCFetchListTask->IpResolve(IPRESOLVE::V4);
+	m_pRClientBCFetchListTask->InsecureSsl(true);
+	m_pRClientBCFetchListTask->LogProgress(HTTPLOG::FAILURE);
+	Http()->Run(m_pRClientBCFetchListTask);
+}
+
+void CRClient::FinishRclientBCFetchList()
+{
+	json_value *pJson = m_pRClientBCFetchListTask->ResultJson();
+	if(!pJson)
+	{
+		return;
+	}
+	m_vBcUsers.clear();
+	char aBuf[NETADDR_MAXSTRSIZE];
+	net_addr_str(&Client()->ServerAddress(), aBuf, sizeof(aBuf), true);
+	if(pJson->type == json_array)
+	{
+		int ServerId = -1;
+		for(int i = 0; i < json_array_length(pJson); i++)
+		{
+			const json_value *CheckServ = json_array_get(pJson, i);
+			if(CheckServ->type == json_object)
+			{
+				const json_value *CheckServerIp = json_object_get(CheckServ, "server_address");
+				if(CheckServerIp->type == json_string && !str_comp(CheckServerIp->u.string.ptr, aBuf))
+				{
+					ServerId = i;
+					break;
+				}
+			}
+		}
+
+		if(ServerId != -1)
+		{
+			const json_value *BcServ = json_array_get(pJson, ServerId);
+			const json_value *BcUsers = json_object_get(BcServ, "players");
+			if(BcUsers->type == json_array)
+			{
+				for(int i = 0; i < json_array_length(BcUsers); i++)
+				{
+					const json_value *CurrentUser = json_array_get(BcUsers, i);
+					const json_value *ClientIdVal = json_object_get(CurrentUser, "client_id");
+					if(ClientIdVal && ClientIdVal->type == json_integer)
+					{
+						int ClientId = ClientIdVal->u.integer;
+						if(ClientId >= 0 && ClientId < MAX_CLIENTS)
+							m_vBcUsers.push_back(ClientId);
+					}
+				}
+			}
+		}
+	}
+
+	json_value_free(pJson);
+}
+
+void CRClient::ResetRclientBCFetchList()
+{
+	if(m_pRClientBCFetchListTask)
+	{
+		m_pRClientBCFetchListTask->Abort();
+		m_pRClientBCFetchListTask = NULL;
+	}
+}
+
+// Test function
+void CRClient::ConRClientTestFunction(IConsole::IResult *pResult, void *pUserData)
+{
+	CRClient *pThis = static_cast<CRClient *>(pUserData);
+	pThis->FetchDuckDuckGoVqd();
+}
+
+// Saves reader
+int CRClient::GetSavesAmount(const char *MapName)
+{
+	CLineReader LineReader;
+	if(!LineReader.OpenFile(Storage()->OpenFile(SAVES_FILE, IOFLAG_READ, IStorage::TYPE_SAVE)))
+	{
+		log_error("RClient-saves", "Didnt find file %s", SAVES_FILE);
+		return 0;
+	}
+	int SavesCount = 0;
+	while(const char *pLine = LineReader.Get())
+	{
+		int PredOffset = 0;
+		int Offset = 0;
+		const char *pEnd;
+		while((pEnd = str_find(pLine + Offset, ",")) != nullptr)
+		{
+			PredOffset = Offset;
+			Offset = pEnd - pLine + 1;
+		}
+
+		if(!PredOffset)
+			continue;
+
+		const char *pStart =  str_find(pLine + PredOffset - 1, ",");
+
+		char aMapNameSave[128];
+		str_truncate(aMapNameSave, sizeof(aMapNameSave), pStart + 1, Offset - PredOffset - 1);
+		if(!str_utf8_comp_nocase(MapName, aMapNameSave))
+			SavesCount++;
+	}
+	return SavesCount;
+}
+
+// Gun Volume
+float CRClient::GetMultiplySoundVolume(int SoundId)
+{
+	if(SoundId != SOUND_GUN_FIRE)
+		return 1.0f;
+
+	return g_Config.m_RcSndGunFireVolume / 100.0f;
+}
+
+// Alpha in spec
+bool CRClient::IsOtherTeamAlpha(int ClientId) const
+{
+	if(!g_Config.m_RcSaveAlphaInOtherTeamInSpec)
+		return GameClient()->IsOtherTeam(ClientId);
+
+	bool Local = GameClient()->m_Snap.m_LocalClientId == ClientId;
+
+	if(GameClient()->m_Snap.m_LocalClientId < 0)
+		return false;
+	else if(ClientId < 0)
+		return false;
+	else if(GameClient()->m_Snap.m_SpecInfo.m_Active && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId != SPEC_FREEVIEW)
+	{
+		if(GameClient()->m_Teams.Team(ClientId) == TEAM_SUPER || GameClient()->m_Teams.Team(GameClient()->m_Snap.m_SpecInfo.m_SpectatorId) == TEAM_SUPER)
+			return false;
+		return GameClient()->m_Teams.Team(ClientId) != GameClient()->m_Teams.Team(GameClient()->m_Snap.m_SpecInfo.m_SpectatorId);
+	}
+	else if((GameClient()->m_aClients[GameClient()->m_Snap.m_LocalClientId].m_Solo || GameClient()->m_aClients[ClientId].m_Solo) && !Local)
+		return true;
+
+	if(GameClient()->m_Teams.Team(ClientId) == TEAM_SUPER || GameClient()->m_Teams.Team(GameClient()->m_Snap.m_LocalClientId) == TEAM_SUPER)
+		return false;
+
+	return GameClient()->m_Teams.Team(ClientId) != GameClient()->m_Teams.Team(GameClient()->m_Snap.m_LocalClientId);
+}
+
+// Highlight Players
+bool CRClient::IsNeedHighlightPlayer(const char *PlayerName)
+{
+	for(std::string &NickTest : m_HighLightPlayersList)
+	{
+		if(!str_utf8_comp_nocase(NickTest.c_str(), PlayerName))
+			return true;
+	}
+	return false;
+}
+
+void CRClient::AddHighlightPlayer(const char *PlayerName)
+{
+	m_HighLightPlayersList.push_back(PlayerName);
+}
+
+void CRClient::RemoveHighlightPlayer(const char *PlayerName)
+{
+	for(size_t i = 0; i < m_HighLightPlayersList.size(); i++)
+	{
+		if(!str_utf8_comp_nocase(m_HighLightPlayersList[i].c_str(), PlayerName))
+		{
+			m_HighLightPlayersList.erase(m_HighLightPlayersList.begin() + i);
+			return;
+		}
+	}
+}
+
+void CRClient::ResetHighlightPlayer()
+{
+	m_HighLightPlayersList.clear();
+}
+
+// DuckDuckGo vqd parse
+void CRClient::ConchainCheckBackend(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData)
+{
+	pfnCallback(pResult, pCallbackUserData);
+	if(!str_comp(g_Config.m_TcTranslateBackend, "duckduckgo"))
+		((CRClient *)pUserData)->FetchDuckDuckGoVqd();
+}
+
+void CRClient::FetchDuckDuckGoVqd()
+{
+	if(m_pRClientVqdTask && !m_pRClientVqdTask->Done())
+		return;
+	m_pRClientVqdTask = HttpGet("https://duckduckgo.com/?q=translate");
+	m_pRClientVqdTask->Timeout(CTimeout{10000, 0, 500, 10});
+	m_pRClientVqdTask->LogProgress(HTTPLOG::FAILURE);
+	m_pRClientVqdTask->HeaderString("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0");
+	Http()->Run(m_pRClientVqdTask);
+}
+
+void CRClient::FinishDuckDuckGoVqd()
+{
+	unsigned char *pResult;
+	size_t ResultLength;
+	m_pRClientVqdTask->Result(&pResult, &ResultLength);
+	if(!pResult || !ResultLength)
+		return;
+	std::string Html((const char *)pResult, ResultLength);
+	const char *pVqd = str_find(Html.c_str(), "vqd=\"");
+	if(pVqd)
+	{
+		pVqd += 5;
+		const char *pVqdEnd = str_find(pVqd, "\"");
+		if(pVqdEnd)
+		{
+			str_truncate(m_aDuckDuckGoVqd, sizeof(m_aDuckDuckGoVqd), pVqd, pVqdEnd - pVqd);
+			m_FetchedDuckDuckGoVqd = true;
+		}
+	}
+}
+
+void CRClient::ResetDuckDuckGoVqdTask()
+{
+	if(m_pRClientVqdTask)
+	{
+		m_pRClientVqdTask->Abort();
+		m_pRClientVqdTask = NULL;
+	}
+}
+
+const char *CRClient::GetDDGVqd()
+{
+	if(m_FetchedDuckDuckGoVqd)
+	{
+		return m_aDuckDuckGoVqd;
+	}
+	else
+	{
+		return "4-67416225507472698366506662181163081335";
+	}
+}
+
+int CRClient::GetWeaponSlot(int Value)
+{
+	int Count = 1;
+	int LastOwned = WEAPON_HAMMER + 1;
+	for(int Wanted = WEAPON_HAMMER + 1; Wanted <= WEAPON_LASER + 1; Wanted++)
+	{
+		if(!GameClient()->m_PredictedChar.m_aWeapons[Wanted - 1].m_Got)
+			continue;
+		LastOwned = Wanted;
+		if(Count == Value)
+			return Wanted;
+		Count++;
+	}
+	return LastOwned;
+}

@@ -1,0 +1,28 @@
+#ifndef GAME_CLIENT_COMPONENTS_RCLIENT_RCLIENTINCLUDE_H
+#define GAME_CLIENT_COMPONENTS_RCLIENT_RCLIENTINCLUDE_H
+
+namespace RcAspectDisable
+{
+	enum
+	{
+		ALL = 1 << 0,
+		WHEELS = 1 << 1,
+		MENUS = 1 << 2,
+		HUD = 1 << 3,
+		SCOREBOARD = 1 << 4,
+		CHAT = 1 << 5,
+		CONSOLE = 1 << 6,
+		EDGEINFO = 1 << 7,
+		INFOMESSAGES = 1 << 8,
+		ADMINPANEL = 1 << 9,
+		NOTIFYINSPEC = 1 << 10,
+		ABOVEBELOWPL = 1 << 11,
+	};
+}
+
+enum
+{
+	CUSTOM_CLIENT_ID_BESTCLIENT = 33554431,
+};
+
+#endif //RCLIENT_RCLIENT_INCLUDE_H

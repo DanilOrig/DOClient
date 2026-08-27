@@ -1,0 +1,1126 @@
+[RClient]
+Dummy
+== Дамми
+
+[RClient]
+Position
+== Позиция
+
+[RClient]
+Clan Change
+== Смена Клана
+
+[RClient]
+Settings
+== Настройки
+
+[RClient]
+Chat Binds
+== Чат бинды
+
+[RClient]
+Spec Wheel
+== Спек Колесо
+
+[RClient]
+Info
+== Инфо
+
+[RClient]
+Show dummy position
+== Показывать позицию дамми
+
+[RClient]
+Show dummy speed
+== Показывать скорость дамми
+
+[RClient]
+Show dummy target angle
+== Показывать угол дамми
+
+[RClient]
+Show advanced dummy actions
+== Улучшенные действия дамми
+
+[RClient]
+Auto change clan
+== Авто смена клана
+
+[RClient]
+With Dummy
+== С Дамми
+
+[RClient]
+Without Dummy
+== Без Дамми
+
+[RClient]
+Scoreboard
+== Табло
+
+[RClient]
+Friends
+== Друзья
+
+[RClient]
+Enable scoreboard mouse
+== Включить мышь в табло
+
+[RClient]
+Always show quick actions in popup
+== Всегда показывать быстрые действия в табе
+
+[RClient]
+Freeze inputs when popup opened
+== Заморозить инпуты когда Popup открыт
+
+[RClient]
+Show friend's heart in scoreboard
+== Показывать друзей в табе
+
+[RClient]
+Heart size
+== Размер сердца
+
+[RClient]
+Players
+== Игроки
+
+[RClient]
+Effects
+== Эффекты
+
+[RClient]
+AFK
+== АФК
+
+[RClient]
+Hitbox
+== Хитбоксы
+
+[RClient]
+Hide frozen flakes
+== Убрать снежки у замороженных
+
+[RClient]
+Always show sparkles
+== Всегда показывать искры
+
+[RClient]
+Show step effects
+== Вкл эффект ходьбы
+
+[RClient]
+Off
+== Выкл
+
+[RClient]
+Others
+== Другие
+
+[RClient]
+Everyone
+== Все
+
+[RClient]
+Own
+== Свои
+
+[RClient]
+Remove hammer hit effect
+== Убрать эффект хаммера
+
+[RClient]
+Default
+== Дефолт
+
+[RClient]
+Visual
+== Визуал
+
+[RClient]
+Full
+== Весь
+
+[RClient]
+Show AFK emote in menu
+== Показывать АФК эмоцию в меню
+
+[RClient]
+Show texture instead emote in menu
+== Показать текстуру вместо эмоции в меню
+
+[RClient]
+Show AFK emote in spec
+== Показывать эмоцию в спеке
+
+[RClient]
+Show texture instead emote in spec
+== Показывать текстуру вместо эмоции в спеке
+
+[RClient]
+Show player hitbox
+== Показывать хитбокс игрока
+
+[RClient]
+Size of hitbox
+== Размер хитбокса
+
+[RClient]
+Quality of hitbox
+== Качество хитбокса
+
+[RClient]
+Hitbox color
+== Цвет хитбокса
+
+[RClient]
+Chat Bubbles
+== Чат баблы
+
+[RClient]
+Enable Chat Bubbles
+== Вкл чат баблы
+
+[RClient]
+Chat bubble size
+== Размер чат баблов
+
+[RClient]
+Show time
+== Время показа
+
+[RClient]
+Fade out time
+== Время угасания
+
+[RClient]
+Fade in time
+== Время появления
+
+[RClient]
+Master Servers
+== Мастер Серверов
+
+[RClient]
+Use Rushie master server mirror
+== Использовать Rushie зеркало мастеров
+
+[RClient]
+Use BestClient master server mirror
+== Использовать BestClient зеркало мастеров
+
+[RClient]
+Integrations
+== Интеграции
+
+[RClient]
+Aspect Ratio
+== Аспект Ратио
+
+[RClient]
+Enable custom aspect ratio
+== Включить кастом аспект ратио
+
+[RClient]
+Width
+== Длина
+
+[RClient]
+Height
+== Высота
+
+[RClient]
+Apply
+== Применить
+
+[RClient]
+Disable for almost all UI
+== Выкл почти для всего UI
+
+[RClient]
+Disable for Wheels
+== Выкл для Колес
+
+[RClient]
+Disable for Menus
+== Выкл для Меню
+
+[RClient]
+Disable for Scoreboard
+== Выкл для Табло
+
+[RClient]
+Disable for Console
+== Выкл для Консоли
+
+[RClient]
+Disable for Above/Below Player
+== Выкл для Над/Под игроком
+
+[RClient]
+Disable for Hud
+== Выкл для Худа
+
+[RClient]
+Disable for Chat
+== Выкл для Чата
+
+[RClient]
+Disable for Edge info
+== Выкл для Эдж инфо
+
+[RClient]
+Disable for Info messages
+== Выкл для Инфо сообщений
+
+[RClient]
+Disable for Notify in spec
+== Выкл для Уведомлений в спеке
+
+[RClient]
+Above/Below Player
+== Над/Под игроком
+
+[RClient]
+Notify when above player
+== Уведомлять когда над игроком
+
+[RClient]
+Notify when same pos as player
+== Уведомлять когда на одной позиции с игроком
+
+[RClient]
+Notify when below player
+== Уведомлять когда под игроком
+
+[RClient]
+Text pos x
+== Позиция X текста
+
+[RClient]
+Text pos y
+== Позиция Y текста
+
+[RClient]
+Spectator
+== Спектатор
+
+[RClient]
+Enable spectator movement
+== Вкл движения спектатора
+
+[RClient]
+Spectator Speed
+== Скорость спектатора
+
+[RClient]
+Spec go Left
+== Двигаться влево в спеке
+
+[RClient]
+Spec go Right
+== Двигаться вправо в спеке
+
+[RClient]
+Spec go Up
+== Двигаться вверх в спеке
+
+[RClient]
+Spec go Down
+== Двигаться вниз в спеке
+
+[RClient]
+Chat
+== Чат
+
+[RClient]
+Main
+== Мейн
+
+[RClient]
+Filter
+== Фильтр
+
+[RClient]
+Translate
+== Перевод
+
+[RClient]
+Show mouse when open chat
+== Показывать мышь когда открыт чат
+
+[RClient]
+Fix language commands
+== Исправлять язык команд
+
+[RClient]
+Enable chat scroll
+== Вкл скролл чата
+
+[RClient]
+Show scroll bar
+== Вкл скролл бар
+
+[RClient]
+Chat Filter Mode
+== Мод чат фильтра
+
+[RClient]
+Partial
+== Частично
+
+[RClient]
+Both
+== Оба
+
+[RClient]
+Print Blocked Message
+== Показывать заблокированное сообщение
+
+[RClient]
+Multiply Partial Match
+== Умножать частичное совпадение
+
+[RClient]
+Partial Word Replacement
+== Частичный заменитель слова
+
+[RClient]
+Multiply Full Match
+== Умножать полное совпадение
+
+[RClient]
+Full Word Replacement
+== Полный заменитель слова
+
+[RClient]
+Use auto translate
+== Использовать авто перевод
+
+[RClient]
+Translate server messages
+== Переводить серверные сообщения
+
+[RClient]
+Latest languages
+== Последние языки
+
+[RClient]
+Your language target (in ISO 639-1 code)
+== Твой язык (ISO 639-1)
+
+[RClient]
+Unknown language
+== Неизвестный язык
+
+[RClient]
+Translate your messages
+== Переводить твои сообщения
+
+[RClient]
+Send language target (in ISO 639-1 code)
+== Язык для перевода твоих сообщений (ISO 639-1)
+
+[RClient]
+Fast settings in chat
+== Быстрые настройки в чате
+
+[RClient]
+Nameplates
+== Неймплейты
+
+[RClient]
+Hook
+== Хук
+
+[RClient]
+Fire
+== Удар
+
+[RClient]
+Weapons
+== Оружия
+
+[RClient]
+Hook Detection
+== Обнаружение хука
+
+[RClient]
+All
+== Все
+
+[RClient]
+Hook size
+== Размер хука
+
+[RClient]
+Hook shift on invis
+== Смещать хук при отсутствии
+
+[RClient]
+Fire Detection
+== Обнаружение удара
+
+[RClient]
+Fire size
+== Размер удара
+
+[RClient]
+Fire shift on invis
+== Смещать удар при отсутствии
+
+[RClient]
+Use preinput for fire
+== Использовать преинпут для удара
+
+[RClient]
+Weapons in nameplates
+== Оружия в неймплейтах
+
+[RClient]
+Weapons size
+== Размер оружий
+
+[RClient]
+Show own weapons
+== Показывать свои оружия
+
+[RClient]
+Show shotgun
+== Показывать дробовик
+
+[RClient]
+Show grenade
+== Показывать гранатомет
+
+[RClient]
+Show ninja
+== Показывать ниндзя
+
+[RClient]
+Show laser
+== Показывать лазер
+
+[RClient]
+Anti AFK
+== Анти АФК
+
+[RClient]
+NonActive
+== Свернут
+
+[RClient]
+Spec
+== Спек
+
+[RClient]
+Play sound when moved and window non active
+== Играть звук когда двигаешься и окно свернуто
+
+[RClient]
+Choose sound non active
+== Выбор звука при свернутом окне
+
+[RClient]
+Grenade
+== Граната
+
+[RClient]
+Tag
+== Тег
+
+[RClient]
+Notify when moved in spec
+== Оповещать когда двигаешься в спеке
+
+[RClient]
+Play sound when moved in spec
+== Играть звук когда двигаешься в спеке
+
+[RClient]
+Choose sound in spec
+== Выбор звука в спеке
+
+[RClient]
+Show text when moved in spec
+== Показывать текст когда двигаешься в спеке
+
+[RClient]
+Client Indicator
+== Клиент Индикатор
+
+[RClient]
+Send to server that u use RClient
+== Отправлять на сервер что ты используешь RClient
+
+[RClient]
+Detect other clients
+== Обнаруживать другие клиенты
+
+[RClient]
+Show client type in nameplates
+== Показывать клиент в неймплейтах
+
+[RClient]
+Only you
+== Только свое
+
+[RClient]
+Show client type in scoreboard
+== Показывать клиент в табло
+
+[RClient]
+Icons size in nameplates
+== Размер иконки в неймплейтах
+
+[RClient]
+Icons size in scoreboard
+== Размер иконки в табло
+
+[RClient]
+Detect BestClient users
+== Обнаруживать юзеров BestClient
+
+[RClient]
+Binds
+== Бинды
+
+[RClient]
+Toggle deepfly
+== Вкл/Выкл Дипфлай
+
+[RClient]
+Deepfly on rmb
+== Дипфлай на пкм
+
+[RClient]
+Toggle 45 degrees
+== Вкл/Выкл 45 градусов
+
+[RClient]
+Echo 45 degrees
+== Echo 45 градусов
+
+[RClient]
+Toggle small sens
+== Вкл/Выкл Маленькой сенсы
+
+[RClient]
+Echo small sens
+== Echo Маленькой сенсы
+
+[RClient]
+Find Teleport
+== Найти Телепорт
+
+[RClient]
+Find Finish
+== Найти Финиш
+
+[RClient]
+Streamer mode
+== Стример мод
+
+[RClient]
+Only windows
+== Только виндовс
+
+[RClient]
+Hide window from capture when RCON opened
+== Убирать захват окна когда открыт ркон
+
+[RClient]
+Edge info
+== Эдж инфо
+
+[RClient]
+Toggle Edge info
+== Вкл/Выкл эдж инфо
+
+[RClient]
+Show coordinates info
+== Показывать инфо координат
+
+[RClient]
+Show jump info
+== Показывать инфо прыжков
+
+[RClient]
+Edge info X pos
+== Эдж инфо X позиция
+
+[RClient]
+Edge info Y pos
+== Эдж инфо Y позиция
+
+[RClient]
+Above Freeze color
+== Цвет над фризом
+
+[RClient]
+Above Kill color
+== Цвет над килом
+
+[RClient]
+Above Save color
+== Цвет над безопасностью
+
+[RClient]
+Hud
+== Худ
+
+[RClient]
+Show checkpoint
+== Показывать Чекпоинт
+
+[RClient]
+Smaller hud (angle,checkpoint)
+== Маленький худ (угол, чекпоинт)
+
+[RClient]
+Show percent in vote
+== Показывать проценты в голосовании
+
+[RClient]
+Swap Timer
+== Свап Таймер
+
+[RClient]
+Enable swap timer
+== Вкл свап таймера
+
+[RClient]
+Swap timer on left side
+== Свап таймер слева
+
+[RClient]
+Swap timer pos y
+== Позиция Y свап таймера
+
+[RClient]
+Helpful Functions
+== Помогающие функции
+
+[RClient]
+Sort
+== Сортировка
+
+[RClient]
+Auto Lock Team
+== Автолок тимы
+
+[RClient]
+Empty
+== Пустая
+
+[RClient]
+Any
+== Любая
+
+[RClient]
+Anti UnSpec in player
+== Анти АнСпек в игроке
+
+[RClient]
+Show Recharge bars (by +KZ/Kaizo Client)
+== Показывать кд удара (by +KZ/Kaizo Client)
+
+[RClient]
+Clear ddnet config from unknown configs on exit
+== Чистить конфиг дднета от неизвестных настроек при выходе
+
+[RClient]
+Show open second client button
+== Вкл кнопку открытия второго клиента
+
+[RClient]
+Show Save Count
+== Показать счетчик сейвов
+
+[RClient]
+File
+== Файл
+
+[RClient]
+/load
+== /load
+
+[RClient]
+Gun fire volume
+== Громкость пистолета
+
+[RClient]
+Sort Scoreboard
+== Сортировка табло
+
+[RClient]
+Sort Spectator
+== Сортировка Спека
+
+[RClient]
+Reset RClient chatbinds
+== Сброс RClient чатбиндов
+
+[RClient]
+RClient Links
+== Ссылки RClient
+
+[RClient]
+Discord
+== Дискорд
+
+[RClient]
+Website
+== Вебсайт
+
+[RClient]
+Github
+== Гитхаб
+
+[RClient]
+Config Files
+== Файлы конфигов
+
+[RClient]
+RClient Settings
+== Настройки RClient
+
+[RClient]
+RClient Developers
+== Разработчики RClient
+
+[RClient]
+Big Thanks To
+== Большое Спасибо
+
+[test]
+Hide Settings Tabs
+== Спрятать вкладки настроек
+
+[RClient]
+Integration
+== Интеграция
+
+[RClient]
+Enable Discord Integration
+== Вкл Интеграцию дискорда
+
+[RClient]
+Keep this settings?
+== Оставить такие настройки?
+
+[RClient]
+Confirm
+== Подтвердить
+
+[RClient]
+Deny
+== Отклонить
+
+[RClient]
+Name:
+== Ник:
+
+[RClient]
+Name
+== Ник
+
+[RClient]
+Command:
+== Команда:
+
+[RClient]
+Command
+== Команда
+
+[RClient]
+Override Selected
+== Перезаписать выбранное
+
+[RClient]
+Add Bind
+== Добавить бинд
+
+[RClient]
+Remove Bind
+== Убрать бинд
+
+[RClient]
+The command is ran in console not chat
+== Команда запускается в консоли, не в чате
+
+[RClient]
+Use left mouse to select
+== Используй ЛКМ для выбора
+
+[RClient]
+Use right mouse to swap with selected
+== Используй ПКМ для свапа с выбранным
+
+[RClient]
+Use middle mouse select without copy
+== Используй Колесико для выбора без копирования
+
+[RClient]
+Use %plnick% for replacing with nickname
+== Используй %plnick% для замены с ником
+
+[RClient]
+Use %plid% for replacing with client id
+== Используй %plid% для замены с клиент айди
+
+[RClient]
+Use bracket yourself "%plnick%"
+== Используй кавычки сам "%plnick%"
+
+[RClient]
+Example: echo "\\"%plnick%\\" %plid%"
+== Пример: echo "\\"%plnick%\\" %plid%"
+
+[RClient]
+Spec Wheel Key
+== Кнопка Спек Колеса
+
+[RClient]
+Reset position of mouse when opening specwheel
+== Сброс позиции мышки при открытии спек колеса
+
+[RClient]
+Player Inspector
+== Инспектор игроков
+
+[RClient]
+Find time:
+== Найти тайм:
+
+[RClient]
+Find hours:
+== Найти часы:
+
+[RClient]
+Find Player:
+== Найти игрока:
+
+[RClient]
+Find Skin:
+== Найти скин:
+
+[RClient]
+Copy Skin:
+== Копировать скин:
+
+[RClient]
+Copy Color:
+== Копировать цвет:
+
+[RClient]
+Backup Profile:
+== Бекап профиля:
+
+[RClient]
+Find Player DDstats
+== Найти игрока DDstats
+
+[RClient]
+Find Skin DDstats
+== Найти скин DDstats
+
+[RClient]
+Copy Skin DDstats
+== Копировать скин DDstats
+
+[RClient]
+Message Filter
+== Фильтр сообщений
+
+[RClient]
+Add word in filter:
+== Добавить слово в фильтр:
+
+[RClient]
+Remove word from filter:
+== Убрать слово из фильтра:
+
+[RClient]
+Tracker
+== Трекер
+
+[RClient]
+Add Tracker:
+== Добавить в трекер:
+
+[RClient]
+Remove Tracker:
+== Убрать из трекера:
+
+[RClient]
+Reset Tracker:
+== Сброс Трекера:
+
+[RClient]
+Map Search
+== Поиск по карте
+
+[RClient]
+Find Teleport:
+== Поиск Телепорта:
+
+[RClient]
+Find Finish:
+== Поиск финиша:
+
+[RClient]
+Others(*)
+== Другие(*)
+
+[RClient]
+All(*)
+== Все(*)
+
+* - Can be fake info in some cases. Better when preinput enabled
+== * - Может быть фейк инфа в некоторых случаях. Лучше когда preinput включен
+
+[RClient]
+Show Chat Bubbles Yourself Input
+== Показывать Чат бабл Ввода текста
+
+[RClient]
+Show Chat Bubbles Above Yourself
+== Показывать Чат бабл Над собой
+
+[RClient]
+Filter Chat
+== Фильтр Чата
+
+[RClient]
+Filter Nameplates
+== Фильтр Неймплейтов
+
+[RClient]
+Filter Scoreboard
+== Фильтр Табло
+
+[RClient]
+Filter Info messages
+== Фильтр Инфо(килфид)
+
+[RClient]
+Enable highlight players in chat
+== Вкл подсветку игроков в чате
+
+[RClient]
+Choose backend
+== Выбрать бекенд
+
+[RClient]
+Google backends
+== Гугл бекенд
+
+[RClient]
+Pseudo fly
+== Псевдо флай
+
+[RClient]
+Fix cl_show_others_alpha in spec
+== Фикс cl_show_others_alpha в спеке
+
+[RClient]
+Auto login rcon on dummy
+== Авто логин ркона на дамми
+
+[RClient]
+Admin Panel
+== Админ Панель
+
+[RClient]
+Open Admin Panel
+== Открыть Админ Панель
+
+[RClient]
+Play sound on action
+== Проигрывать звук при действии
+
+[RClient]
+Rcon
+== 
+
+[RClient]
+Popup
+== 
+
+[RClient]
+by qxdFox/Entity Client
+== 
+
+[RClient]
+Discord RPC
+== 
+
+[RClient]
+Steam
+== 
+
+[RClient]
+*
+== 
+
+[RClient]
+^
+== 
+
+[RClient]
+ru
+== 
+
+[RClient]
+en
+== 
+
+[RClient]
+Wake up
+== 
+
+[RClient]
+Remove text on any input
+== Убирать текст при любом вводе
+
+[RClient]
+by +KZ/Kaizo Client
+== 
+
+[RClient]
+Monitor(win7-11)
+== 
+
+[RClient]
+Exclude(win10-11)
+== 
+
+[RClient]
+name-team-score
+== 
+
+[RClient]
+id-team-score
+== 
+
+[RClient]
+id-score
+== 
+
+[RClient]
+id-team
+== 
+
+[RClient]
+id
+== 
+
+[RClient]
+name-team
+== 
+
+[RClient]
+RClient \\/
+== 

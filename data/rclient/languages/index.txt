@@ -1,0 +1,11 @@
+##### language indices #####
+# Format for each language entry:
+# 1. filename (in english)
+# 2. name (in native language)
+# 3. country code (ISO 3166-1 numeric)
+# 4. language tags (RFC 3066) (multiple can be separated with semicolon)
+
+russian
+== Русский
+== 643
+== ru
