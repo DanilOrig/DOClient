@@ -5,6 +5,7 @@
 #include "chat.h"
 
 #include <base/dbg.h>
+#include <base/time.h>
 
 #include <engine/graphics.h>
 #include <engine/shared/config.h>
@@ -51,6 +52,7 @@ void CEmoticon::OnReset()
 	m_SelectedEyeEmote = -1;
 	m_TouchState = CUi::CTouchState();
 	m_TouchPressedOutside = false;
+	m_OpenTime = 0;
 }
 
 void CEmoticon::OnRelease()
@@ -85,6 +87,8 @@ void CEmoticon::OnRender()
 
 	if(!m_Active)
 	{
+		m_OpenTime = 0;
+
 		if(m_TouchPressedOutside)
 		{
 			m_SelectedEmote = -1;
@@ -147,10 +151,24 @@ void CEmoticon::OnRender()
 
 	Ui()->MapScreen();
 
+	const bool EmoteAnimated = g_Config.m_EcUiAnimations && g_Config.m_EcEmoteAnimation;
+	float EmoteScale = 1.0f;
+	float EmoteAlpha = 1.0f;
+	if(EmoteAnimated)
+	{
+		if(m_OpenTime == 0)
+			m_OpenTime = time();
+		const float Age = (time() - m_OpenTime) / (float)time_freq();
+		const float Progress = std::clamp(Age / 0.14f, 0.0f, 1.0f);
+		const float Eased = 1.0f - (1.0f - Progress) * (1.0f - Progress) * (1.0f - Progress);
+		EmoteScale = 0.85f + 0.15f * Eased;
+		EmoteAlpha = 0.25f + 0.75f * Eased;
+	}
+
 	Graphics()->TextureClear();
 	Graphics()->QuadsBegin();
-	Graphics()->SetColor(0, 0, 0, 0.3f);
-	Graphics()->DrawCircle(ScreenCenter.x, ScreenCenter.y, 190.0f, 64);
+	Graphics()->SetColor(0, 0, 0, 0.3f * EmoteAlpha);
+	Graphics()->DrawCircle(ScreenCenter.x, ScreenCenter.y, 190.0f * EmoteScale, 64);
 	Graphics()->QuadsEnd();
 
 	Graphics()->WrapClamp();
@@ -163,20 +181,22 @@ void CEmoticon::OnRender()
 		Graphics()->TextureSet(GameClient()->m_EmoticonsSkin.m_aSpriteEmoticons[Emote]);
 		Graphics()->QuadsSetSubset(0, 0, 1, 1);
 		Graphics()->QuadsBegin();
-		const vec2 Nudge = direction(Angle) * 150.0f;
-		const float Size = m_SelectedEmote == Emote ? 80.0f : 50.0f;
+		Graphics()->SetColor(1.0f, 1.0f, 1.0f, EmoteAlpha);
+		const vec2 Nudge = direction(Angle) * 150.0f * EmoteScale;
+		const float Size = (m_SelectedEmote == Emote ? 80.0f : 50.0f) * EmoteScale;
 		IGraphics::CQuadItem QuadItem(ScreenCenter.x + Nudge.x, ScreenCenter.y + Nudge.y, Size, Size);
 		Graphics()->QuadsDraw(&QuadItem, 1);
 		Graphics()->QuadsEnd();
 	}
 	Graphics()->WrapNormal();
+	Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
 
 	if(GameClient()->m_GameInfo.m_AllowEyeWheel && g_Config.m_ClEyeWheel && GameClient()->m_aLocalIds[g_Config.m_ClDummy] >= 0)
 	{
 		Graphics()->TextureClear();
 		Graphics()->QuadsBegin();
-		Graphics()->SetColor(1.0, 1.0, 1.0, 0.3f);
-		Graphics()->DrawCircle(ScreenCenter.x, ScreenCenter.y, 100.0f, 64);
+		Graphics()->SetColor(1.0, 1.0, 1.0, 0.3f * EmoteAlpha);
+		Graphics()->DrawCircle(ScreenCenter.x, ScreenCenter.y, 100.0f * EmoteScale, 64);
 		Graphics()->QuadsEnd();
 
 		CTeeRenderInfo TeeInfo = GameClient()->m_aClients[GameClient()->m_aLocalIds[g_Config.m_ClDummy]].m_RenderInfo;
@@ -187,15 +207,15 @@ void CEmoticon::OnRender()
 			if(Angle > pi)
 				Angle -= 2 * pi;
 
-			const vec2 Nudge = direction(Angle) * 70.0f;
-			TeeInfo.m_Size = m_SelectedEyeEmote == Emote ? 64.0f : 48.0f;
+			const vec2 Nudge = direction(Angle) * 70.0f * EmoteScale;
+			TeeInfo.m_Size = (m_SelectedEyeEmote == Emote ? 64.0f : 48.0f) * EmoteScale;
 			RenderTools()->RenderTee(CAnimState::GetIdle(), &TeeInfo, Emote, vec2(-1, 0), ScreenCenter + Nudge);
 		}
 
 		Graphics()->TextureClear();
 		Graphics()->QuadsBegin();
-		Graphics()->SetColor(0, 0, 0, 0.3f);
-		Graphics()->DrawCircle(ScreenCenter.x, ScreenCenter.y, 30.0f, 64);
+		Graphics()->SetColor(0, 0, 0, 0.3f * EmoteAlpha);
+		Graphics()->DrawCircle(ScreenCenter.x, ScreenCenter.y, 30.0f * EmoteScale, 64);
 		Graphics()->QuadsEnd();
 	}
 	else

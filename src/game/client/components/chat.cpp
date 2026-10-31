@@ -11,9 +11,11 @@
 
 #include <engine/editor.h>
 #include <engine/graphics.h>
+#include <engine/http.h>
 #include <engine/keys.h>
 #include <engine/shared/config.h>
 #include <engine/shared/csv.h>
+#include <engine/shared/json.h>
 #include <engine/textrender.h>
 
 #include <generated/protocol.h>
@@ -21,13 +23,216 @@
 
 #include <game/client/animstate.h>
 #include <game/client/components/censor.h>
+#include <game/client/components/menus.h>
 #include <game/client/components/scoreboard.h>
 #include <game/client/components/skins.h>
 #include <game/client/components/sounds.h>
 #include <game/client/gameclient.h>
 #include <game/localization.h>
 
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <iterator>
+#include <string>
+
 char CChat::ms_aDisplayText[MAX_CHAT_LENGTH] = "";
+
+namespace
+{
+enum
+{
+	TRANSLATE_BACKEND_BING = 0,
+	TRANSLATE_BACKEND_GOOGLE = 1,
+};
+
+struct STranslateLanguage
+{
+	const char *m_pCode;
+	const char *m_pName;
+};
+
+constexpr STranslateLanguage s_aTranslateLanguages[] = {
+	{"ru", "Russian"},
+	{"en", "English"},
+	{"de", "German"},
+	{"fr", "French"},
+	{"es", "Spanish"},
+	{"pl", "Polish"},
+	{"tr", "Turkish"},
+	{"uk", "Ukrainian"},
+	{"pt", "Portuguese"},
+	{"it", "Italian"},
+	{"zh-CN", "Chinese"},
+	{"ja", "Japanese"},
+};
+
+int TranslateLanguageIndex(const char *pCode)
+{
+	for(int i = 0; i < (int)std::size(s_aTranslateLanguages); i++)
+	{
+		if(str_comp(pCode, s_aTranslateLanguages[i].m_pCode) == 0)
+			return i;
+	}
+	return 0;
+}
+
+void TranslateUrlEncode(const char *pText, char *pOut, size_t Size)
+{
+	size_t Pos = 0;
+	for(const unsigned char *p = (const unsigned char *)pText; *p && Pos + 4 < Size; ++p)
+	{
+		if(isalnum(*p) || *p == '-' || *p == '_' || *p == '.' || *p == '~')
+		{
+			pOut[Pos++] = (char)*p;
+		}
+		else
+		{
+			str_format(pOut + Pos, 4, "%%%02X", *p);
+			Pos += 3;
+		}
+	}
+	pOut[Pos] = '\0';
+}
+
+void TranslateStripApostrophes(char *pText)
+{
+	char *pWrite = pText;
+	for(const char *pRead = pText; *pRead;)
+	{
+		if(*pRead == '\'')
+		{
+			++pRead;
+			continue;
+		}
+		// U+2018 and U+2019 (typographic apostrophes)
+		if((unsigned char)pRead[0] == 0xE2 && (unsigned char)pRead[1] == 0x80 && ((unsigned char)pRead[2] == 0x98 || (unsigned char)pRead[2] == 0x99))
+		{
+			pRead += 3;
+			continue;
+		}
+		*pWrite++ = *pRead++;
+	}
+	*pWrite = '\0';
+}
+
+// Google translate response: [[["translated","original",...], ...], "en", ...]
+bool ParseGoogleTranslation(const json_value *pRoot, char (&aOut)[MAX_CHAT_LENGTH], char (&aLang)[16])
+{
+	aOut[0] = '\0';
+	aLang[0] = '\0';
+	if(!pRoot || pRoot->type != json_array || json_array_length(pRoot) < 1)
+		return false;
+	const json_value *pDetected = json_array_get(pRoot, 2);
+	if(pDetected && pDetected->type == json_string)
+		str_copy(aLang, json_string_get(pDetected));
+	const json_value *pSentences = json_array_get(pRoot, 0);
+	if(!pSentences || pSentences->type != json_array)
+		return false;
+	for(int i = 0; i < json_array_length(pSentences); i++)
+	{
+		const json_value *pSentence = json_array_get(pSentences, i);
+		if(!pSentence || pSentence->type != json_array)
+			continue;
+		const json_value *pPart = json_array_get(pSentence, 0);
+		if(pPart && pPart->type == json_string)
+			str_append(aOut, json_string_get(pPart));
+	}
+	return aOut[0] != '\0';
+}
+
+void TranslateJsonEscape(const char *pText, char *pOut, size_t Size)
+{
+	static const char s_aHex[] = "0123456789abcdef";
+	size_t Pos = 0;
+	for(const char *p = pText; *p && Pos + 7 < Size; ++p)
+	{
+		const unsigned char c = (unsigned char)*p;
+		if(c == (unsigned char)'"' || c == (unsigned char)'\\')
+		{
+			pOut[Pos++] = '\\';
+			pOut[Pos++] = (char)c;
+		}
+		else if(c < 0x20)
+		{
+			pOut[Pos++] = '\\';
+			pOut[Pos++] = 'u';
+			pOut[Pos++] = '0';
+			pOut[Pos++] = '0';
+			pOut[Pos++] = s_aHex[c >> 4];
+			pOut[Pos++] = s_aHex[c & 0xf];
+		}
+		else
+		{
+			pOut[Pos++] = (char)c;
+		}
+	}
+	pOut[Pos] = '\0';
+}
+
+// Bing translate response: [{"detectedLanguage":{"language":"en"},"translations":[{"text":"..."}]}]
+bool ParseBingTranslation(const json_value *pRoot, char (&aOut)[MAX_CHAT_LENGTH], char (&aLang)[16])
+{
+	aOut[0] = '\0';
+	aLang[0] = '\0';
+	if(!pRoot || pRoot->type != json_array || json_array_length(pRoot) < 1)
+		return false;
+	const json_value *pResult = json_array_get(pRoot, 0);
+	if(!pResult || pResult->type != json_object)
+		return false;
+	const json_value *pTranslations = json_object_get(pResult, "translations");
+	if(!pTranslations || pTranslations->type != json_array || json_array_length(pTranslations) < 1)
+		return false;
+	const json_value *pTranslation = json_array_get(pTranslations, 0);
+	if(!pTranslation || pTranslation->type != json_object)
+		return false;
+	const json_value *pText = json_object_get(pTranslation, "text");
+	if(!pText || pText->type != json_string)
+		return false;
+	const json_value *pDetected = json_object_get(pResult, "detectedLanguage");
+	if(pDetected && pDetected->type == json_object)
+	{
+		const json_value *pLanguage = json_object_get(pDetected, "language");
+		if(pLanguage && pLanguage->type == json_string)
+			str_copy(aLang, pLanguage->u.string.ptr);
+	}
+	str_copy(aOut, pText->u.string.ptr);
+	return aOut[0] != '\0';
+}
+
+bool ParseTranslation(int Backend, const json_value *pRoot, char (&aOut)[MAX_CHAT_LENGTH], char (&aLang)[16])
+{
+	return Backend == TRANSLATE_BACKEND_BING ? ParseBingTranslation(pRoot, aOut, aLang) : ParseGoogleTranslation(pRoot, aOut, aLang);
+}
+
+// In auto mode fall back to the other backend when the preferred one is unavailable
+int TranslateNextBackend(int Tried)
+{
+	if(g_Config.m_EcChatTranslateBackend != 0)
+		return -1;
+	return Tried == TRANSLATE_BACKEND_BING ? TRANSLATE_BACKEND_GOOGLE : TRANSLATE_BACKEND_BING;
+}
+}
+
+int CChat::NumTranslateLanguages()
+{
+	return (int)std::size(s_aTranslateLanguages);
+}
+
+const char *CChat::TranslateLanguageCode(int Index)
+{
+	return s_aTranslateLanguages[Index].m_pCode;
+}
+
+const char *CChat::TranslateLanguageName(int Index)
+{
+	return s_aTranslateLanguages[Index].m_pName;
+}
+
+int CChat::TranslateLanguageIndexOf(const char *pCode)
+{
+	return TranslateLanguageIndex(pCode);
+}
 
 CChat::CLine::CLine()
 {
@@ -42,15 +247,36 @@ void CChat::CLine::Reset(CChat &This)
 	m_Initialized = false;
 	m_Time = 0;
 	m_aText[0] = '\0';
+	m_aTranslatedText[0] = '\0';
+	m_TranslateState = 0;
 	m_aName[0] = '\0';
 	m_Friend = false;
 	m_TimesRepeated = 0;
+	m_aRenderedPrefix[0] = '\0';
+	m_aRenderedText[0] = '\0';
 	m_pManagedTeeRenderInfo = nullptr;
 }
 
 CChat::CChat()
 {
 	m_Mode = MODE_NONE;
+
+	m_TranslateLineIndex = -1;
+	m_NextTranslateTime = 0;
+	m_TranslateOutgoingTeam = 0;
+	m_SendingTranslated = false;
+	m_TranslateBackend = -1;
+	m_TranslateIncomingBackend = -1;
+	m_TranslateOutgoingBackend = -1;
+
+	m_NumLineRects = 0;
+	m_ChatOpenTime = 0;
+	m_SelectionPress = vec2(0.0f, 0.0f);
+	m_SelectionRelease = vec2(0.0f, 0.0f);
+	m_Selecting = false;
+	m_HasSelection = false;
+	m_BacklogCurLine = 0;
+	m_LinesRendered = 0;
 
 	m_Input.SetCalculateOffsetCallback([this]() { return m_IsInputCensored; });
 	m_Input.SetDisplayTextCallback([this](char *pStr, size_t NumChars) {
@@ -147,6 +373,7 @@ void CChat::Reset()
 	m_ServerSupportsCommandInfo = false;
 	m_ServerCommandsNeedSorting = false;
 	m_aCurrentInputText[0] = '\0';
+	ClearChatSelection();
 	DisableMode();
 	m_vServerCommands.clear();
 	std::fill(std::begin(m_aLastSoundPlayed), std::end(m_aLastSoundPlayed), 0);
@@ -273,8 +500,15 @@ bool CChat::OnInput(const IInput::CEvent &Event)
 	if(m_Mode == MODE_NONE)
 		return false;
 
+	if(Event.m_Flags & IInput::FLAG_PRESS && Input()->ModifierIsPressed() && !Input()->AltIsPressed() && Event.m_Key == KEY_C && !m_Input.HasSelection() && m_HasSelection)
+	{
+		CopyChatSelection();
+		return true;
+	}
+
 	if(Event.m_Flags & IInput::FLAG_PRESS && Event.m_Key == KEY_ESCAPE)
 	{
+		ClearChatSelection();
 		DisableMode();
 		GameClient()->OnRelease();
 		if(g_Config.m_ClChatReset)
@@ -496,6 +730,46 @@ bool CChat::OnInput(const IInput::CEvent &Event)
 		m_Input.ProcessInput(Event);
 	}
 
+	if(Event.m_Flags & IInput::FLAG_PRESS && g_Config.m_EcChatHistory)
+	{
+		if(Event.m_Key == KEY_MOUSE_WHEEL_UP)
+		{
+			ClearChatSelection();
+			m_BacklogCurLine += GetLinesToScroll(-1, 1);
+			return true;
+		}
+		else if(Event.m_Key == KEY_MOUSE_WHEEL_DOWN)
+		{
+			ClearChatSelection();
+			m_BacklogCurLine = std::max(0, m_BacklogCurLine - GetLinesToScroll(1, 1));
+			return true;
+		}
+		else if(Event.m_Key == KEY_PAGEUP)
+		{
+			ClearChatSelection();
+			ScrollPageUp();
+			return true;
+		}
+		else if(Event.m_Key == KEY_PAGEDOWN)
+		{
+			ClearChatSelection();
+			ScrollPageDown();
+			return true;
+		}
+		else if(Event.m_Key == KEY_HOME && m_Input.IsEmpty())
+		{
+			ClearChatSelection();
+			ScrollToTop();
+			return true;
+		}
+		else if(Event.m_Key == KEY_END && m_Input.IsEmpty())
+		{
+			ClearChatSelection();
+			ScrollToBottom();
+			return true;
+		}
+	}
+
 	if(Event.m_Flags & IInput::FLAG_PRESS && Event.m_Key == KEY_UP)
 	{
 		if(m_EditingNewLine)
@@ -552,7 +826,12 @@ void CChat::EnableMode(int Team)
 
 		m_CompletionChosen = -1;
 		m_CompletionUsed = false;
+		m_ChatOpenTime = time();
+		m_PrevInputText.clear();
+		m_vTypingAnims.clear();
 		m_Input.Activate(EInputPriority::CHAT);
+		if(g_Config.m_EcChatMouseSelection)
+			Input()->MouseModeAbsolute();
 	}
 }
 
@@ -562,6 +841,13 @@ void CChat::DisableMode()
 	{
 		m_Mode = MODE_NONE;
 		m_Input.Deactivate();
+		m_ChatOpenTime = 0;
+		m_PrevInputText.clear();
+		m_vTypingAnims.clear();
+		m_BacklogCurLine = 0;
+		ClearChatSelection();
+		if(g_Config.m_EcChatMouseSelection)
+			Input()->MouseModeRelative();
 	}
 }
 
@@ -819,6 +1105,12 @@ void CChat::AddLine(int ClientId, int Team, const char *pLine)
 	CurrentLine.m_Highlighted = Highlighted;
 
 	str_copy(CurrentLine.m_aText, pLine);
+	if(g_Config.m_EcChatTranslate && ClientId >= 0 &&
+		ClientId != GameClient()->m_aLocalIds[0] && ClientId != GameClient()->m_aLocalIds[1] &&
+		CurrentLine.m_aText[0] != '\0')
+	{
+		CurrentLine.m_TranslateState = 1;
+	}
 
 	if(CurrentLine.m_ClientId == SERVER_MSG)
 	{
@@ -883,6 +1175,10 @@ void CChat::AddLine(int ClientId, int Team, const char *pLine)
 	}
 
 	FChatMsgCheckAndPrint(CurrentLine);
+
+	// keep the scrolled view stable when new lines arrive
+	if(m_BacklogCurLine > 0)
+		m_BacklogCurLine = std::min(m_BacklogCurLine + 1, GetMaxBacklogCurLine());
 
 	// play sound
 	int64_t Now = time();
@@ -979,6 +1275,9 @@ void CChat::OnPrepareLines(float y)
 		if(Now > Line.m_Time + 16 * time_freq() && !m_PrevShowChat)
 			break;
 
+		if(i < m_BacklogCurLine)
+			continue;
+
 		if(Line.m_TextContainerIndex.Valid() && !ForceRecreate)
 			continue;
 
@@ -998,6 +1297,8 @@ void CChat::OnPrepareLines(float y)
 			str_format(aCount, sizeof(aCount), " [%d]", Line.m_TimesRepeated + 1);
 
 		const char *pText = Line.m_aText;
+		if(Line.m_TranslateState == 2 && Line.m_aTranslatedText[0] != '\0')
+			pText = Line.m_aTranslatedText;
 		if(Config()->m_ClStreamerMode && Line.m_ClientId == SERVER_MSG)
 		{
 			if(str_startswith(Line.m_aText, "Team save in progress. You'll be able to load with '/load ") && str_endswith(Line.m_aText, "'"))
@@ -1013,6 +1314,29 @@ void CChat::OnPrepareLines(float y)
 				pText = "Team successfully saved by ***. Use '/load *** *** ***' to continue";
 			}
 		}
+
+		char aPrefix[MAX_CHAT_LENGTH] = "";
+		if(Line.m_ClientId >= 0 && Line.m_aName[0] != '\0')
+		{
+			if(Line.m_Friend && g_Config.m_ClMessageFriend)
+				str_append(aPrefix, "♥ ");
+			str_append(aPrefix, aClientId);
+			str_append(aPrefix, Line.m_aName);
+			if(Line.m_TimesRepeated > 0)
+				str_append(aPrefix, aCount);
+			str_append(aPrefix, ": ");
+		}
+		else
+		{
+			str_append(aPrefix, aClientId);
+			str_append(aPrefix, Line.m_aName);
+			if(Line.m_TimesRepeated > 0)
+				str_append(aPrefix, aCount);
+		}
+		str_copy(Line.m_aRenderedPrefix, aPrefix);
+		str_copy(Line.m_aRenderedText, pText);
+
+		const bool ShowOriginal = Line.m_TranslateState == 2 && Line.m_aTranslatedText[0] != '\0' && g_Config.m_EcChatTranslateShowOriginal;
 
 		// get the y offset (calculate it if we haven't done that yet)
 		if(Line.m_aYOffset[OffsetType] < 0.0f)
@@ -1051,7 +1375,18 @@ void CChat::OnPrepareLines(float y)
 				AppendCursor.m_LineWidth -= MeasureCursor.m_LongestLineWidth;
 			}
 
-			TextRender()->TextEx(&AppendCursor, pText);
+			if(ShowOriginal)
+			{
+				TextRender()->TextEx(&AppendCursor, pText);
+				TextRender()->TextEx(&AppendCursor, "\n");
+				AppendCursor.m_FontSize *= 0.8f;
+				TextRender()->TextEx(&AppendCursor, Line.m_aText);
+				AppendCursor.m_FontSize /= 0.8f;
+			}
+			else
+			{
+				TextRender()->TextEx(&AppendCursor, pText);
+			}
 
 			Line.m_aYOffset[OffsetType] = AppendCursor.Height() + RealMsgPaddingY;
 		}
@@ -1146,7 +1481,24 @@ void CChat::OnPrepareLines(float y)
 			AppendCursor.m_LineWidth -= LineCursor.m_LongestLineWidth;
 		}
 
-		TextRender()->CreateOrAppendTextContainer(Line.m_TextContainerIndex, &AppendCursor, pText);
+		if(ShowOriginal)
+		{
+			TextRender()->CreateOrAppendTextContainer(Line.m_TextContainerIndex, &AppendCursor, pText);
+			ColorRGBA SubColor = Color;
+			SubColor.r *= 0.7f;
+			SubColor.g *= 0.7f;
+			SubColor.b *= 0.7f;
+			TextRender()->TextColor(SubColor);
+			TextRender()->CreateOrAppendTextContainer(Line.m_TextContainerIndex, &AppendCursor, "\n");
+			AppendCursor.m_FontSize *= 0.8f;
+			TextRender()->CreateOrAppendTextContainer(Line.m_TextContainerIndex, &AppendCursor, Line.m_aText);
+			AppendCursor.m_FontSize /= 0.8f;
+			TextRender()->TextColor(Color);
+		}
+		else
+		{
+			TextRender()->CreateOrAppendTextContainer(Line.m_TextContainerIndex, &AppendCursor, pText);
+		}
 
 		if(!g_Config.m_ClChatOld && (Line.m_aText[0] != '\0' || Line.m_aName[0] != '\0'))
 		{
@@ -1176,6 +1528,8 @@ void CChat::OnRender()
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 		return;
 
+	UpdateChatTranslation();
+
 	// send pending chat messages
 	if(m_PendingChatCounter > 0 && m_LastChatSend + time_freq() < time())
 	{
@@ -1198,6 +1552,18 @@ void CChat::OnRender()
 	float x = 5.0f;
 	float y = 300.0f - 20.0f * FontSize() / 6.0f;
 	float ScaledFontSize = FontSize() * (8.0f / 6.0f);
+
+	const bool ChatAnimated = g_Config.m_EcUiAnimations && g_Config.m_EcChatAnimation;
+	float ChatOpenAlpha = 1.0f;
+	if(ChatAnimated && m_Mode != MODE_NONE && m_ChatOpenTime != 0)
+	{
+		const float Age = (time() - m_ChatOpenTime) / (float)time_freq();
+		const float Progress = std::clamp(Age / 0.15f, 0.0f, 1.0f);
+		const float Eased = 1.0f - (1.0f - Progress) * (1.0f - Progress) * (1.0f - Progress);
+		y += (1.0f - Eased) * 10.0f;
+		ChatOpenAlpha = 0.25f + 0.75f * Eased;
+	}
+
 	if(m_Mode != MODE_NONE)
 	{
 		// render chat input
@@ -1229,7 +1595,58 @@ void CChat::OnRender()
 		const bool WasChanged = m_Input.WasChanged();
 		const bool WasCursorChanged = m_Input.WasCursorChanged();
 		const bool Changed = WasChanged || WasCursorChanged;
-		const STextBoundingBox BoundingBox = m_Input.Render(&InputCursorRect, InputCursor.m_FontSize, TEXTALIGN_TL, Changed, MessageMaxWidth, 0.0f);
+
+		UpdateTypingAnimations();
+
+		std::vector<STextColorSplit> vTypingSplits;
+		const char *pDisplayedInput = m_Input.GetDisplayedString();
+		if(ChatAnimated)
+		{
+			for(auto It = m_vTypingAnims.begin(); It != m_vTypingAnims.end();)
+			{
+				const float Age = (time() - It->m_StartTime) / (float)time_freq();
+				if(Age > 0.12f || It->m_ByteIndex < 0 || It->m_ByteIndex + It->m_ByteLength > (int)str_length(pDisplayedInput))
+				{
+					It = m_vTypingAnims.erase(It);
+					continue;
+				}
+				vTypingSplits.emplace_back(It->m_ByteIndex, It->m_ByteLength, ColorRGBA(1.0f, 1.0f, 1.0f, 0.0f));
+				++It;
+			}
+		}
+
+		const STextBoundingBox BoundingBox = m_Input.Render(&InputCursorRect, InputCursor.m_FontSize, TEXTALIGN_TL, Changed, MessageMaxWidth, 0.0f, vTypingSplits);
+
+		if(!vTypingSplits.empty())
+		{
+			char aPrefix[MAX_CHAT_LENGTH];
+			for(const STypingAnim &Anim : m_vTypingAnims)
+			{
+				const float Age = (time() - Anim.m_StartTime) / (float)time_freq();
+				const float Progress = std::clamp(Age / 0.12f, 0.0f, 1.0f);
+				const float Eased = 1.0f - (1.0f - Progress) * (1.0f - Progress) * (1.0f - Progress);
+				if(Anim.m_ByteIndex < 0 || Anim.m_ByteIndex + Anim.m_ByteLength > (int)str_length(pDisplayedInput))
+					continue;
+
+				str_truncate(aPrefix, sizeof(aPrefix), pDisplayedInput, Anim.m_ByteIndex);
+				CTextCursor MeasureCursor;
+				MeasureCursor.SetPosition(vec2(InputCursor.m_X, InputCursor.m_Y - ScrollOffset));
+				MeasureCursor.m_FontSize = InputCursor.m_FontSize;
+				MeasureCursor.m_LineWidth = MessageMaxWidth;
+				TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.0f);
+				TextRender()->TextEx(&MeasureCursor, aPrefix);
+
+				char aGlyph[8] = "";
+				str_truncate(aGlyph, sizeof(aGlyph), pDisplayedInput + Anim.m_ByteIndex, Anim.m_ByteLength);
+				CTextCursor GlyphCursor;
+				GlyphCursor.SetPosition(vec2(MeasureCursor.m_X, MeasureCursor.m_Y - 2.0f * (1.0f - Eased)));
+				GlyphCursor.m_FontSize = InputCursor.m_FontSize;
+				GlyphCursor.m_LineWidth = MessageMaxWidth;
+				TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.3f + 0.7f * Eased);
+				TextRender()->TextEx(&GlyphCursor, aGlyph);
+			}
+			TextRender()->TextColor(TextRender()->DefaultTextColor());
+		}
 
 		Graphics()->ClipDisable();
 
@@ -1270,6 +1687,8 @@ void CChat::OnRender()
 #endif
 		return;
 
+	m_BacklogCurLine = std::clamp(m_BacklogCurLine, 0, GetMaxBacklogCurLine());
+
 	y -= ScaledFontSize;
 
 	OnPrepareLines(y);
@@ -1282,12 +1701,20 @@ void CChat::OnRender()
 
 	float RealMsgPaddingX = MessagePaddingX();
 	float RealMsgPaddingY = MessagePaddingY();
+	const int TeeSize = MessageTeeSize();
+	float RealMsgPaddingTee = TeeSize + MESSAGE_TEE_PADDING_RIGHT;
 
 	if(g_Config.m_ClChatOld)
 	{
 		RealMsgPaddingX = 0;
 		RealMsgPaddingY = 0;
+		RealMsgPaddingTee = 0;
 	}
+
+	m_NumLineRects = 0;
+	m_LinesRendered = 0;
+	const bool SelectionActive = m_Mode != MODE_NONE && g_Config.m_EcChatMouseSelection && (m_Selecting || m_HasSelection);
+	m_vSelectionLines.clear();
 
 	for(int i = 0; i < MAX_LINES; i++)
 	{
@@ -1297,13 +1724,49 @@ void CChat::OnRender()
 		if(Now > Line.m_Time + 16 * time_freq() && !m_PrevShowChat)
 			break;
 
+		if(i < m_BacklogCurLine)
+			continue;
+
 		y -= Line.m_aYOffset[OffsetType];
 
 		// cut off if msgs waste too much space
 		if(y < HeightLimit)
 			break;
 
+		m_LinesRendered++;
+
 		float Blend = Now > Line.m_Time + 14 * time_freq() && !m_PrevShowChat ? 1.0f - (Now - Line.m_Time - 14 * time_freq()) / (2.0f * time_freq()) : 1.0f;
+
+		float SlideY = 0.0f;
+		if(ChatAnimated)
+		{
+			const float LineAge = (Now - Line.m_Time) / (float)time_freq();
+			if(LineAge >= 0.0f && LineAge < 0.15f)
+			{
+				const float Progress = std::clamp(LineAge / 0.15f, 0.0f, 1.0f);
+				const float Eased = 1.0f - (1.0f - Progress) * (1.0f - Progress) * (1.0f - Progress);
+				SlideY = (1.0f - Eased) * 8.0f;
+				Blend *= 0.2f + 0.8f * Eased;
+			}
+			Blend *= ChatOpenAlpha;
+		}
+
+		if(Line.m_TextContainerIndex.Valid())
+		{
+			const STextBoundingBox BoundingBox = TextRender()->GetBoundingBoxTextContainer(Line.m_TextContainerIndex);
+			const float TextStart = x + RealMsgPaddingX / 2.0f;
+			const float RectY = y + RealMsgPaddingY / 2.0f - 2.0f;
+			const float RectH = Line.m_aYOffset[OffsetType] - RealMsgPaddingY + 4.0f;
+
+			if(m_NumLineRects < MAX_LINES)
+			{
+				m_aLineRects[m_NumLineRects].m_X = TextStart;
+				m_aLineRects[m_NumLineRects].m_Y = RectY + SlideY;
+				m_aLineRects[m_NumLineRects].m_W = BoundingBox.m_W;
+				m_aLineRects[m_NumLineRects].m_H = RectH;
+				m_NumLineRects++;
+			}
+		}
 
 		// Draw backgrounds for messages in one batch
 		if(!g_Config.m_ClChatOld)
@@ -1312,7 +1775,7 @@ void CChat::OnRender()
 			if(Line.m_QuadContainerIndex != -1)
 			{
 				Graphics()->SetColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClChatBackgroundColor, true)).WithMultipliedAlpha(Blend));
-				Graphics()->RenderQuadContainerEx(Line.m_QuadContainerIndex, 0, -1, 0, ((y + RealMsgPaddingY / 2.0f) - Line.m_TextYOffset));
+				Graphics()->RenderQuadContainerEx(Line.m_QuadContainerIndex, 0, -1, 0, ((y + SlideY + RealMsgPaddingY / 2.0f) - Line.m_TextYOffset));
 			}
 		}
 
@@ -1328,14 +1791,222 @@ void CChat::OnRender()
 				float OffsetTeeY = TeeSize / 2.0f;
 				float FullHeightMinusTee = RowHeight - TeeSize;
 
-				RenderTools()->RenderIdleTeeAtCenter(&TeeRenderInfo, vec2(x + (RealMsgPaddingX + TeeSize) / 2.0f, y + OffsetTeeY + FullHeightMinusTee / 2.0f), EMOTE_NORMAL, vec2(1, 0.1f), Blend);
+				RenderTools()->RenderIdleTeeAtCenter(&TeeRenderInfo, vec2(x + (RealMsgPaddingX + TeeSize) / 2.0f, y + SlideY + OffsetTeeY + FullHeightMinusTee / 2.0f), EMOTE_NORMAL, vec2(1, 0.1f), Blend);
 			}
 
 			const ColorRGBA TextColor = TextRender()->DefaultTextColor().WithMultipliedAlpha(Blend);
 			const ColorRGBA TextOutlineColor = TextRender()->DefaultTextOutlineColor().WithMultipliedAlpha(Blend);
-			TextRender()->RenderTextContainer(Line.m_TextContainerIndex, TextColor, TextOutlineColor, 0, (y + RealMsgPaddingY / 2.0f) - Line.m_TextYOffset);
+			TextRender()->RenderTextContainer(Line.m_TextContainerIndex, TextColor, TextOutlineColor, 0, (y + SlideY + RealMsgPaddingY / 2.0f) - Line.m_TextYOffset);
+		}
+
+		if(SelectionActive)
+			RenderChatSelection(Line, y + SlideY, x, RealMsgPaddingX, RealMsgPaddingY, RealMsgPaddingTee, IsScoreBoardOpen);
+	}
+
+	if(SelectionActive)
+	{
+		m_SelectionText.clear();
+		for(auto It = m_vSelectionLines.rbegin(); It != m_vSelectionLines.rend(); ++It)
+		{
+			if(!m_SelectionText.empty())
+				m_SelectionText += '\n';
+			m_SelectionText += *It;
+		}
+		m_HasSelection = !m_SelectionText.empty();
+	}
+
+	UpdateChatSelection(Height);
+}
+
+void CChat::ClearChatSelection()
+{
+	m_SelectionPress = vec2(0.0f, 0.0f);
+	m_SelectionRelease = vec2(0.0f, 0.0f);
+	m_Selecting = false;
+	m_HasSelection = false;
+	m_SelectionText.clear();
+	m_vSelectionLines.clear();
+}
+
+void CChat::UpdateChatSelection(float Height)
+{
+	if(m_Mode == MODE_NONE || !g_Config.m_EcChatMouseSelection)
+	{
+		if(m_Selecting || m_HasSelection)
+			ClearChatSelection();
+		return;
+	}
+
+	const vec2 WindowSize = vec2(Graphics()->WindowWidth(), Graphics()->WindowHeight());
+	const vec2 ScreenSize = vec2(Height * Graphics()->ScreenAspect(), Height);
+	const vec2 Mouse = Input()->NativeMousePos() / WindowSize * ScreenSize;
+	const bool MousePressed = Input()->NativeMousePressed(1);
+
+	if(MousePressed && !m_Selecting)
+	{
+		bool OnMessage = false;
+		for(int i = 0; i < m_NumLineRects; i++)
+		{
+			const SLineRect &Rect = m_aLineRects[i];
+			if(Mouse.x >= Rect.m_X - 4.0f && Mouse.x <= Rect.m_X + Rect.m_W + 8.0f && Mouse.y >= Rect.m_Y && Mouse.y <= Rect.m_Y + Rect.m_H)
+			{
+				OnMessage = true;
+				break;
+			}
+		}
+		if(OnMessage)
+		{
+			m_Selecting = true;
+			m_SelectionPress = Mouse;
+			m_SelectionRelease = Mouse;
+			m_HasSelection = false;
+			m_SelectionText.clear();
+		}
+		else if(m_HasSelection)
+		{
+			ClearChatSelection();
 		}
 	}
+	else if(m_Selecting)
+	{
+		m_SelectionRelease = Mouse;
+		if(!MousePressed)
+			m_Selecting = false;
+	}
+}
+
+void CChat::RenderChatSelection(CLine &Line, float y, float x, float RealMsgPaddingX, float RealMsgPaddingY, float RealMsgPaddingTee, bool IsScoreBoardOpen)
+{
+	const int OffsetType = IsScoreBoardOpen ? 1 : 0;
+	const float SelectionMinY = std::min(m_SelectionPress.y, m_SelectionRelease.y);
+	const float SelectionMaxY = std::max(m_SelectionPress.y, m_SelectionRelease.y);
+	const float LineTop = y + RealMsgPaddingY / 2.0f;
+	const float LineBottom = y + Line.m_aYOffset[OffsetType];
+	if(LineBottom < SelectionMinY || LineTop > SelectionMaxY)
+		return;
+
+	const float TextBegin = x + RealMsgPaddingX / 2.0f;
+	const float LineWidth = (IsScoreBoardOpen ? std::max(85.0f, FontSize() * 85.0f / 6.0f) : g_Config.m_ClChatWidth) - (RealMsgPaddingX * 1.5f) - RealMsgPaddingTee;
+
+	CTextCursor PrefixCursor;
+	PrefixCursor.SetPosition(vec2(TextBegin, y + RealMsgPaddingY / 2.0f));
+	PrefixCursor.m_FontSize = FontSize();
+	PrefixCursor.m_LineWidth = LineWidth;
+	PrefixCursor.m_Flags = TEXTFLAG_RENDER;
+	PrefixCursor.m_CalculateSelectionMode = TEXT_CURSOR_SELECTION_MODE_CALCULATE;
+	PrefixCursor.m_PressMouse = m_SelectionPress;
+	PrefixCursor.m_ReleaseMouse = m_SelectionRelease;
+	if(Line.m_ClientId >= 0 && Line.m_aName[0] != '\0')
+		PrefixCursor.m_X += RealMsgPaddingTee;
+
+	TextRender()->TextSelectionColor(TextRender()->DefaultTextSelectionColor());
+	TextRender()->TextColor(0.0f, 0.0f, 0.0f, 0.0f);
+	TextRender()->TextEx(&PrefixCursor, Line.m_aRenderedPrefix, -1);
+
+	CTextCursor MsgCursor = PrefixCursor;
+	MsgCursor.m_LongestLineWidth = 0.0f;
+	if(!IsScoreBoardOpen && !g_Config.m_ClChatOld)
+	{
+		MsgCursor.m_StartX = PrefixCursor.m_X;
+		MsgCursor.m_LineWidth -= PrefixCursor.m_LongestLineWidth;
+	}
+	TextRender()->TextEx(&MsgCursor, Line.m_aRenderedText, -1);
+	TextRender()->TextColor(TextRender()->DefaultTextColor());
+
+	// Both cursors keep counting glyphs across the appended text, so the selection indexes
+	// returned after rendering the message are already offsets into the full "prefix + text".
+	const int PrefixSelStart = std::min(PrefixCursor.m_SelectionStart, PrefixCursor.m_SelectionEnd);
+	const int PrefixSelEnd = std::max(PrefixCursor.m_SelectionStart, PrefixCursor.m_SelectionEnd);
+	const int MsgSelStart = std::min(MsgCursor.m_SelectionStart, MsgCursor.m_SelectionEnd);
+	const int MsgSelEnd = std::max(MsgCursor.m_SelectionStart, MsgCursor.m_SelectionEnd);
+
+	int SelStart = -1;
+	int SelEnd = -1;
+	if(PrefixSelEnd > PrefixSelStart)
+	{
+		SelStart = PrefixSelStart;
+		SelEnd = PrefixSelEnd;
+	}
+	if(MsgSelEnd > MsgSelStart)
+	{
+		SelStart = SelStart < 0 ? MsgSelStart : std::min(SelStart, MsgSelStart);
+		SelEnd = SelEnd < 0 ? MsgSelEnd : std::max(SelEnd, MsgSelEnd);
+	}
+	if(SelStart < 0 || SelEnd <= SelStart)
+		return;
+
+	char aDisplay[MAX_CHAT_LENGTH * 2];
+	str_format(aDisplay, sizeof(aDisplay), "%s%s", Line.m_aRenderedPrefix, Line.m_aRenderedText);
+
+	const size_t OffStart = str_utf8_offset_chars_to_bytes(aDisplay, SelStart);
+	const size_t OffEnd = str_utf8_offset_chars_to_bytes(aDisplay, SelEnd);
+	if(OffEnd > OffStart && OffEnd <= str_length(aDisplay))
+	{
+		m_vSelectionLines.emplace_back(aDisplay + OffStart, OffEnd - OffStart);
+	}
+}
+
+void CChat::CopyChatSelection()
+{
+	if(m_SelectionText.empty())
+		return;
+	Input()->SetClipboardText(m_SelectionText.c_str());
+}
+
+int CChat::NumInitializedLines() const
+{
+	int Count = 0;
+	for(int i = 0; i < MAX_LINES; i++)
+	{
+		if(!m_aLines[((m_CurrentLine - i) + MAX_LINES) % MAX_LINES].m_Initialized)
+			break;
+		Count++;
+	}
+	return Count;
+}
+
+int CChat::GetMaxBacklogCurLine() const
+{
+	return std::max(0, NumInitializedLines() - std::max(1, m_LinesRendered));
+}
+
+int CChat::GetLinesToScroll(int Direction, int LinesToScroll) const
+{
+	const int RenderableLines = NumInitializedLines();
+	int LinesToSkip = Direction == -1 ? m_BacklogCurLine + m_LinesRendered : m_BacklogCurLine - 1;
+	LinesToSkip = std::clamp(LinesToSkip, 0, std::max(0, RenderableLines));
+
+	int Amount;
+	if(Direction == -1)
+	{
+		const int RemainingAbove = std::max(0, RenderableLines - LinesToSkip);
+		Amount = LinesToScroll <= 0 ? RemainingAbove : std::min(RemainingAbove, LinesToScroll);
+	}
+	else
+	{
+		Amount = LinesToScroll <= 0 ? m_BacklogCurLine : std::min(m_BacklogCurLine, LinesToScroll);
+	}
+	return std::max(0, Amount);
+}
+
+void CChat::ScrollToTop()
+{
+	m_BacklogCurLine += GetLinesToScroll(-1, -1);
+}
+
+void CChat::ScrollToBottom()
+{
+	m_BacklogCurLine = 0;
+}
+
+void CChat::ScrollPageUp()
+{
+	m_BacklogCurLine += GetLinesToScroll(-1, std::max(1, m_LinesRendered));
+}
+
+void CChat::ScrollPageDown()
+{
+	m_BacklogCurLine = std::max(0, m_BacklogCurLine - GetLinesToScroll(1, std::max(1, m_LinesRendered)));
 }
 
 void CChat::EnsureCoherentFontSize() const
@@ -1358,6 +2029,197 @@ void CChat::EnsureCoherentWidth() const
 	g_Config.m_ClChatWidth = CHAT_FONTSIZE_WIDTH_RATIO * g_Config.m_ClChatFontSize;
 }
 
+// ----- chat translation -----
+
+void CChat::StartChatTranslateRequest(const char *pText, const char *pTarget, bool Outgoing, int Backend)
+{
+	if(Backend < 0)
+		Backend = g_Config.m_EcChatTranslateBackend == 2 ? TRANSLATE_BACKEND_GOOGLE : TRANSLATE_BACKEND_BING;
+
+	std::shared_ptr<IHttpRequest> pRequest;
+	if(Backend == TRANSLATE_BACKEND_BING)
+	{
+		char aEscaped[MAX_CHAT_LENGTH * 2];
+		TranslateJsonEscape(pText, aEscaped, sizeof(aEscaped));
+		char aBody[sizeof(aEscaped) + 8];
+		str_format(aBody, sizeof(aBody), "[\"%s\"]", aEscaped);
+		char aUrl[256];
+		str_format(aUrl, sizeof(aUrl), "https://edge.microsoft.com/translate/translatetext?to=%s", pTarget);
+		pRequest = HttpGet(aUrl);
+		pRequest->PostJson(aBody);
+	}
+	else
+	{
+		char aEncoded[MAX_CHAT_LENGTH * 3];
+		TranslateUrlEncode(pText, aEncoded, sizeof(aEncoded));
+		char aBody[sizeof(aEncoded) + 64];
+		str_format(aBody, sizeof(aBody), "client=gtx&sl=auto&dt=t&tl=%s&q=%s", pTarget, aEncoded);
+		pRequest = HttpGet("https://translate.googleapis.com/translate_a/single");
+		pRequest->HeaderString("Content-Type", "application/x-www-form-urlencoded");
+		pRequest->Post((const unsigned char *)aBody, str_length(aBody));
+	}
+	pRequest->Timeout(CTimeout{4000, 8000, 0, 0});
+	pRequest->FailOnErrorStatus(false);
+	pRequest->LogProgress(HTTPLOG::FAILURE);
+	Http()->Run(pRequest);
+
+	if(Outgoing)
+	{
+		m_TranslateOutgoingBackend = Backend;
+		m_pTranslateOutgoingRequest = pRequest;
+	}
+	else
+	{
+		m_TranslateIncomingBackend = Backend;
+		m_pTranslateIncomingRequest = pRequest;
+	}
+}
+
+void CChat::UpdateTypingAnimations()
+{
+	const char *pCurrent = m_Input.GetDisplayedString();
+	if(!g_Config.m_EcUiAnimations || !g_Config.m_EcChatAnimation || m_Input.HasSelection())
+	{
+		m_vTypingAnims.clear();
+		m_PrevInputText.assign(pCurrent);
+		return;
+	}
+
+	const size_t CurrentLen = str_length(pCurrent);
+	const size_t PreviousLen = m_PrevInputText.size();
+	size_t Prefix = 0;
+	while(Prefix < CurrentLen && Prefix < PreviousLen && pCurrent[Prefix] == m_PrevInputText[Prefix])
+		Prefix++;
+
+	if(CurrentLen > PreviousLen && Prefix == PreviousLen)
+	{
+		for(size_t Pos = PreviousLen; Pos < CurrentLen;)
+		{
+			const size_t Next = (size_t)str_utf8_forward(pCurrent, (int)Pos);
+			STypingAnim Anim;
+			Anim.m_StartTime = time();
+			Anim.m_ByteIndex = (int)Pos;
+			Anim.m_ByteLength = (int)(Next - Pos);
+			m_vTypingAnims.push_back(Anim);
+			Pos = Next;
+		}
+	}
+	else if(CurrentLen != PreviousLen)
+	{
+		m_vTypingAnims.clear();
+	}
+	m_PrevInputText.assign(pCurrent);
+}
+void CChat::UpdateChatTranslation()
+{
+	if(m_pTranslateIncomingRequest && m_pTranslateIncomingRequest->Done())
+	{
+		CLine *pLine = (m_TranslateLineIndex >= 0 && m_TranslateLineIndex < MAX_LINES) ? &m_aLines[m_TranslateLineIndex] : nullptr;
+		bool Success = false;
+		bool SameLanguage = false;
+		char aDetectedLanguage[16] = "";
+		if(pLine && m_pTranslateIncomingRequest->State() == EHttpState::DONE && m_pTranslateIncomingRequest->StatusCode() == 200)
+		{
+			json_value *pJson = m_pTranslateIncomingRequest->ResultJson();
+			Success = ParseTranslation(m_TranslateIncomingBackend, pJson, pLine->m_aTranslatedText, aDetectedLanguage);
+			json_value_free(pJson);
+			if(Success && str_comp_nocase(aDetectedLanguage, g_Config.m_EcChatTranslateTarget) == 0)
+			{
+				SameLanguage = true;
+				Success = false;
+			}
+		}
+
+		const int NextBackend = Success ? -1 : TranslateNextBackend(m_TranslateIncomingBackend);
+		if(pLine && !Success && !SameLanguage && NextBackend >= 0)
+		{
+			m_TranslateBackend = NextBackend;
+			m_pTranslateIncomingRequest = nullptr;
+			StartChatTranslateRequest(pLine->m_aText, g_Config.m_EcChatTranslateTarget, false, NextBackend);
+		}
+		else
+		{
+			if(Success)
+				m_TranslateBackend = m_TranslateIncomingBackend;
+			if(pLine && pLine->m_Initialized && pLine->m_TranslateState == 1)
+			{
+				if(Success && g_Config.m_EcChatTranslateApostrophes)
+					TranslateStripApostrophes(pLine->m_aTranslatedText);
+				pLine->m_TranslateState = Success ? 2 : 3;
+				// rebuild this line with the translated text
+				TextRender()->DeleteTextContainer(pLine->m_TextContainerIndex);
+				Graphics()->DeleteQuadContainer(pLine->m_QuadContainerIndex);
+				pLine->m_aYOffset[0] = -1.0f;
+				pLine->m_aYOffset[1] = -1.0f;
+			}
+			m_pTranslateIncomingRequest = nullptr;
+			m_TranslateLineIndex = -1;
+		}
+	}
+
+	if(m_pTranslateOutgoingRequest && m_pTranslateOutgoingRequest->Done())
+	{
+		char aText[MAX_CHAT_LENGTH];
+		aText[0] = '\0';
+		bool Success = false;
+		bool SameLanguage = false;
+		char aDetectedLanguage[16] = "";
+		if(m_pTranslateOutgoingRequest->State() == EHttpState::DONE && m_pTranslateOutgoingRequest->StatusCode() == 200)
+		{
+			json_value *pJson = m_pTranslateOutgoingRequest->ResultJson();
+			Success = ParseTranslation(m_TranslateOutgoingBackend, pJson, aText, aDetectedLanguage);
+			json_value_free(pJson);
+			if(Success && str_comp_nocase(aDetectedLanguage, g_Config.m_EcChatTranslateOutTarget) == 0)
+			{
+				SameLanguage = true;
+				Success = false;
+			}
+		}
+
+		const int NextBackend = Success ? -1 : TranslateNextBackend(m_TranslateOutgoingBackend);
+		if(!Success && !SameLanguage && NextBackend >= 0)
+		{
+			m_TranslateBackend = NextBackend;
+			m_pTranslateOutgoingRequest = nullptr;
+			StartChatTranslateRequest(m_aTranslateOutgoingText, g_Config.m_EcChatTranslateOutTarget, true, NextBackend);
+		}
+		else
+		{
+			if(Success)
+				m_TranslateBackend = m_TranslateOutgoingBackend;
+			if(Success && g_Config.m_EcChatTranslateApostrophes)
+				TranslateStripApostrophes(aText);
+			m_pTranslateOutgoingRequest = nullptr;
+
+			// on failure the original message is sent
+			m_SendingTranslated = true;
+			SendChat(m_TranslateOutgoingTeam, Success ? aText : m_aTranslateOutgoingText);
+			m_SendingTranslated = false;
+		}
+	}
+
+	if(!g_Config.m_EcChatTranslate || m_pTranslateIncomingRequest || m_TranslateLineIndex != -1 || time() < m_NextTranslateTime)
+		return;
+
+	// translate the newest incoming line that is still waiting, one request at a time
+	for(int i = 0; i < MAX_LINES; i++)
+	{
+		const int Index = (m_CurrentLine - i + MAX_LINES) % MAX_LINES;
+		CLine &Line = m_aLines[Index];
+		if(!Line.m_Initialized || Line.m_TranslateState != 1)
+			continue;
+		if(time() > Line.m_Time + 16 * time_freq())
+		{
+			Line.m_TranslateState = 0;
+			continue;
+		}
+		m_TranslateLineIndex = Index;
+		StartChatTranslateRequest(Line.m_aText, g_Config.m_EcChatTranslateTarget, false, m_TranslateBackend);
+		m_NextTranslateTime = time() + time_freq() / 2;
+		break;
+	}
+}
+
 // ----- send functions -----
 
 void CChat::SendChat(int Team, const char *pLine)
@@ -1365,6 +2227,15 @@ void CChat::SendChat(int Team, const char *pLine)
 	// don't send empty messages
 	if(*str_utf8_skip_whitespaces(pLine) == '\0')
 		return;
+
+	// translate own messages first, the translated text is sent when the response arrives
+	if(!m_SendingTranslated && g_Config.m_EcChatTranslate && g_Config.m_EcChatTranslateOutgoing && pLine[0] != '/' && !m_pTranslateOutgoingRequest)
+	{
+		str_copy(m_aTranslateOutgoingText, pLine);
+		m_TranslateOutgoingTeam = Team;
+		StartChatTranslateRequest(pLine, g_Config.m_EcChatTranslateOutTarget, true, m_TranslateBackend);
+		return;
+	}
 
 	m_LastChatSend = time();
 

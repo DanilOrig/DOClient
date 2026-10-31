@@ -429,6 +429,7 @@ void CMenus::RenderSettingsAssets(CUIRect MainView)
 
 	// skin selector
 	MainView.HSplitTop(MainView.h - 10.0f - ms_ButtonHeight, &CustomList, &MainView);
+	m_SettingsSplitY = CustomList.y - m_SettingsViewY;
 	if(gs_aInitCustomList[s_CurCustomTab])
 	{
 		int ListSize = 0;

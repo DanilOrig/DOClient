@@ -74,6 +74,8 @@ public:
 	// `OnValidation(true)` has been called.
 	void ValidateBeforeOverwrite(bool ValidateBeforeOverwrite) { m_ValidateBeforeOverwrite = ValidateBeforeOverwrite; }
 	void ExpectSha256(const SHA256_DIGEST &Sha256) { m_ExpectedSha256 = Sha256; }
+	// Skip TLS certificate verification (for self-signed certificates).
+	void InsecureSsl(bool InsecureSsl) { m_InsecureSsl = InsecureSsl; }
 
 	void Head();
 	void Post(const unsigned char *pData, size_t DataLength);
@@ -152,6 +154,7 @@ protected:
 	bool m_SkipByFileTime = true;
 	IPRESOLVE m_IpResolve = IPRESOLVE::WHATEVER;
 	bool m_FailOnErrorStatus = true;
+	bool m_InsecureSsl = false;
 	bool m_ValidateBeforeOverwrite = false;
 	std::optional<SHA256_DIGEST> m_ExpectedSha256 = std::nullopt;
 	int64_t m_IfModifiedSince = -1;

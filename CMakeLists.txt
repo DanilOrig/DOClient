@@ -2712,6 +2712,7 @@ if(CLIENT)
     components/menus_settings_controls.h
     components/menus_settings_credits.cpp
     components/menus_settings_ddnet.cpp
+    components/menus_settings_doclient.cpp
     components/menus_settings_general.cpp
     components/menus_settings_graphics.cpp
     components/menus_settings_language.cpp
@@ -2743,11 +2744,15 @@ if(CLIENT)
     components/spectator.h
     components/statboard.cpp
     components/statboard.h
+    components/stt.cpp
+    components/stt.h
     components/touch_controls.cpp
     components/touch_controls.h
     components/voting.cpp
     components/voting.h
     gameclient.cpp
+    perf.cpp
+    perf.h
     gameclient.h
     laser_data.cpp
     laser_data.h

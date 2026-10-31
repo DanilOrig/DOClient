@@ -118,6 +118,7 @@ void CMenus::RenderSettingsPlayer(CUIRect MainView)
 	}
 
 	MainView.HSplitTop(10.0f, nullptr, &MainView);
+	m_SettingsSplitY = MainView.y - m_SettingsViewY;
 	MainView.HSplitBottom(20.0f, &MainView, &QuickSearch);
 	MainView.HSplitBottom(5.0f, &MainView, nullptr);
 	QuickSearch.VSplitLeft(220.0f, &QuickSearch, nullptr);

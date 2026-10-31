@@ -359,6 +359,7 @@ void CMenus::RenderSettingsTee(CUIRect MainView)
 	DirectoryButton.VSplitRight(10.0f, &DirectoryButton, nullptr);
 
 	// Skin selector
+	m_SettingsSplitY = MainView.y - m_SettingsViewY;
 	static CListBox s_ListBox;
 	std::vector<CSkins::CSkinListEntry> &vSkinList = SkinList.Skins();
 	int OldSelected = -1;

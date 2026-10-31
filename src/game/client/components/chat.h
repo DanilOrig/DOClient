@@ -15,7 +15,9 @@
 #include <game/client/component.h>
 #include <game/client/lineinput.h>
 #include <game/client/render.h>
+#include <game/client/ui.h>
 
+#include <string>
 #include <vector>
 
 constexpr auto SAVES_FILE = "ddnet-saves.txt";
@@ -48,6 +50,8 @@ class CChat : public CComponent
 		int m_NameColor;
 		char m_aName[64];
 		char m_aText[MAX_CHAT_LENGTH];
+		char m_aTranslatedText[MAX_CHAT_LENGTH];
+		int m_TranslateState;
 		bool m_Friend;
 		bool m_Highlighted;
 		std::optional<ColorRGBA> m_CustomColor;
@@ -60,6 +64,8 @@ class CChat : public CComponent
 		float m_TextYOffset;
 
 		int m_TimesRepeated;
+		char m_aRenderedPrefix[MAX_CHAT_LENGTH];
+		char m_aRenderedText[MAX_CHAT_LENGTH];
 	};
 
 	bool m_PrevScoreBoardShowed;
@@ -145,6 +151,64 @@ class CChat : public CComponent
 
 	bool m_ServerSupportsCommandInfo;
 
+	// chat translation (ported from Rushie Client, Bing/Google backends)
+	std::shared_ptr<class IHttpRequest> m_pTranslateIncomingRequest;
+	std::shared_ptr<class IHttpRequest> m_pTranslateOutgoingRequest;
+	int m_TranslateLineIndex;
+	int64_t m_NextTranslateTime;
+	int m_TranslateOutgoingTeam;
+	char m_aTranslateOutgoingText[MAX_CHAT_LENGTH];
+	bool m_SendingTranslated;
+	int m_TranslateBackend;
+	int m_TranslateIncomingBackend;
+	int m_TranslateOutgoingBackend;
+	void UpdateChatTranslation();
+	void StartChatTranslateRequest(const char *pText, const char *pTarget, bool Outgoing, int Backend);
+
+	// smooth chat animations
+	struct STypingAnim
+	{
+		int64_t m_StartTime;
+		int m_ByteIndex;
+		int m_ByteLength;
+	};
+	int64_t m_ChatOpenTime;
+	std::string m_PrevInputText;
+	std::vector<STypingAnim> m_vTypingAnims;
+	void UpdateTypingAnimations();
+
+	// chat message selection with the mouse while the chat is open
+	struct SLineRect
+	{
+		float m_X;
+		float m_Y;
+		float m_W;
+		float m_H;
+	};
+	SLineRect m_aLineRects[MAX_LINES];
+	int m_NumLineRects;
+	vec2 m_SelectionPress;
+	vec2 m_SelectionRelease;
+	bool m_Selecting;
+	bool m_HasSelection;
+	std::string m_SelectionText;
+	std::vector<std::string> m_vSelectionLines;
+	void UpdateChatSelection(float Height);
+	void RenderChatSelection(CLine &Line, float y, float x, float RealMsgPaddingX, float RealMsgPaddingY, float RealMsgPaddingTee, bool IsScoreBoardOpen);
+	void CopyChatSelection();
+	void ClearChatSelection();
+
+	// chat history scrolling while the chat is open
+	int m_BacklogCurLine;
+	int m_LinesRendered;
+	int NumInitializedLines() const;
+	int GetLinesToScroll(int Direction, int LinesToScroll) const;
+	int GetMaxBacklogCurLine() const;
+	void ScrollToTop();
+	void ScrollToBottom();
+	void ScrollPageUp();
+	void ScrollPageDown();
+
 	static void ConSay(IConsole::IResult *pResult, void *pUserData);
 	static void ConSayTeam(IConsole::IResult *pResult, void *pUserData);
 	static void ConChat(IConsole::IResult *pResult, void *pUserData);
@@ -167,6 +231,10 @@ public:
 	static constexpr float MESSAGE_TEE_PADDING_RIGHT = 0.5f;
 
 	bool IsActive() const { return m_Mode != MODE_NONE; }
+	static int NumTranslateLanguages();
+	static const char *TranslateLanguageCode(int Index);
+	static const char *TranslateLanguageName(int Index);
+	static int TranslateLanguageIndexOf(const char *pCode);
 	void AddLine(int ClientId, int Team, const char *pLine);
 	void EnableMode(int Team);
 	void DisableMode();

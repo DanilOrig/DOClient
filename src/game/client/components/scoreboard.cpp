@@ -133,6 +133,7 @@ void CScoreboard::ResetTexts()
 		Player.m_Score.Reset(TextRender());
 		Player.m_ScoreMillis.Reset(TextRender());
 		Player.m_Name.Reset(TextRender());
+		Player.m_Tag.Reset(TextRender());
 		Player.m_ReadyMark.Reset(TextRender());
 		Player.m_Clan.Reset(TextRender());
 		Player.m_Ping.Reset(TextRender());
@@ -412,6 +413,28 @@ void CScoreboard::RenderSpectators(CUIRect Spectators)
 			if(ClientData.m_AuthLevel)
 			{
 				TextRender()->TextColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClAuthedPlayerColor)));
+			}
+
+			if(g_Config.m_EcClientTypes)
+			{
+				const char *pTag = ClientData.m_aClientTag;
+				ColorRGBA TagColor(0.65f, 0.65f, 0.65f, 1.0f);
+				if(str_comp(pTag, "[EC]") == 0)
+					TagColor = ColorRGBA(1.0f, 0.45f, 0.85f, 1.0f);
+				else if(str_comp(pTag, "[RC]") == 0)
+					TagColor = ColorRGBA(0.4f, 0.6f, 1.0f, 1.0f);
+				else if(str_comp(pTag, "[C]") == 0)
+					TagColor = ColorRGBA(0.6f, 0.75f, 0.85f, 1.0f);
+				else if(g_Config.m_EcClientTypesBestClient && GameClient()->m_aBestClientTag[pInfo->m_ClientId])
+				{
+					pTag = "[BC]";
+					TagColor = ColorRGBA(1.0f, 0.65f, 0.2f, 1.0f);
+				}
+
+				TextRender()->TextColor(TagColor);
+				TextRender()->TextEx(pCursor, pTag);
+				TextRender()->TextEx(pCursor, " ");
+				TextRender()->TextColor(TextRender()->DefaultTextColor());
 			}
 
 			TextRender()->TextEx(pCursor, ClientData.m_aName);
@@ -838,6 +861,32 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 
 			// name
 			{
+				const char *pTag = nullptr;
+				ColorRGBA TagColor(0.65f, 0.65f, 0.65f, TextColor.a);
+				if(g_Config.m_EcClientTypes)
+				{
+					pTag = ClientData.m_aClientTag;
+					if(str_comp(pTag, "[EC]") == 0)
+						TagColor = ColorRGBA(1.0f, 0.45f, 0.85f, TextColor.a);
+					else if(str_comp(pTag, "[RC]") == 0)
+						TagColor = ColorRGBA(0.4f, 0.6f, 1.0f, TextColor.a);
+					else if(str_comp(pTag, "[C]") == 0)
+						TagColor = ColorRGBA(0.6f, 0.75f, 0.85f, TextColor.a);
+					else if(g_Config.m_EcClientTypesBestClient && GameClient()->m_aBestClientTag[pInfo->m_ClientId])
+					{
+						pTag = "[BC]";
+						TagColor = ColorRGBA(1.0f, 0.65f, 0.2f, TextColor.a);
+					}
+				}
+
+				float TagWidth = 0.0f;
+				if(pTag)
+				{
+					Player.m_Tag.Update(TextRender(), pTag, FontSize);
+					Player.m_Tag.Render(TextRender(), vec2(NameOffset, TextY), TagColor);
+					TagWidth = Player.m_Tag.Width() + 2.0f;
+				}
+
 				if(g_Config.m_ClShowIds)
 				{
 					char aClientId[16];
@@ -849,20 +898,20 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				{
 					str_copy(aBuf, ClientData.m_aName);
 				}
-				Player.m_Name.Update(TextRender(), aBuf, FontSize, NameLength, TEXTFLAG_RENDER | TEXTFLAG_ELLIPSIS_AT_END);
+				Player.m_Name.Update(TextRender(), aBuf, FontSize, std::max(0.0f, NameLength - TagWidth), TEXTFLAG_RENDER | TEXTFLAG_ELLIPSIS_AT_END);
 
 				ColorRGBA NameColor = TextColor;
 				if(ClientData.m_AuthLevel)
 				{
 					NameColor = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClAuthedPlayerColor));
 				}
-				Player.m_Name.Render(TextRender(), vec2(NameOffset, TextY), NameColor);
+				Player.m_Name.Render(TextRender(), vec2(NameOffset + TagWidth, TextY), NameColor);
 
 				// ready / watching
 				if(Client()->IsSixup() && Client()->m_TranslationContext.m_aClients[pInfo->m_ClientId].m_PlayerFlags7 & protocol7::PLAYERFLAG_READY)
 				{
 					Player.m_ReadyMark.Update(TextRender(), "✓", FontSize);
-					Player.m_ReadyMark.Render(TextRender(), vec2(NameOffset + Player.m_Name.Width(), TextY), ColorRGBA(0.1f, 1.0f, 0.1f, TextColor.a));
+					Player.m_ReadyMark.Render(TextRender(), vec2(NameOffset + TagWidth + Player.m_Name.Width(), TextY), ColorRGBA(0.1f, 1.0f, 0.1f, TextColor.a));
 				}
 			}
 

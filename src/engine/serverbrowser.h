@@ -20,6 +20,9 @@
 
 static constexpr const char *DDNET_INFO_FILE = "ddnet-info.json";
 static constexpr const char *DDNET_INFO_URL = "https://info.ddnet.org/info";
+// Custom community data by https://github.com/TaterClient/ddnet-custom-communities (UNLICENSE)
+static constexpr const char *CUSTOM_COMMUNITIES_FILE = "custom-communities-ddnet-info.json";
+static constexpr const char *CUSTOM_COMMUNITIES_URL = "https://raw.githubusercontent.com/TaterClient/ddnet-custom-communities/main/custom-communities-ddnet-info.json";
 
 class CUIElement;
 
@@ -376,6 +379,7 @@ public:
 
 	virtual bool DDNetInfoAvailable() const = 0;
 	virtual std::optional<SHA256_DIGEST> DDNetInfoSha256() const = 0;
+	virtual void ReloadCommunities() = 0;
 
 	virtual ICommunityCache &CommunityCache() = 0;
 	virtual const ICommunityCache &CommunityCache() const = 0;

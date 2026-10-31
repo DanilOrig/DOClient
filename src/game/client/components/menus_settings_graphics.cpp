@@ -54,6 +54,7 @@ void CMenus::RenderSettingsGraphics(CUIRect MainView)
 
 	CUIRect ModeList, ModeLabel;
 	MainView.VSplitLeft(350.0f, &MainView, &ModeList);
+	m_SettingsSplitX = ModeList.x - m_SettingsViewX;
 	ModeList.HSplitTop(24.0f, &ModeLabel, &ModeList);
 	MainView.VSplitLeft(340.0f, &MainView, nullptr);
 

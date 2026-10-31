@@ -790,7 +790,7 @@ public:
 	struct SSelectionPopupContext : public SPopupMenuId
 	{
 		CUi *m_pUI; // set by CUi when popup is shown
-		CScrollRegion *m_pScrollRegion;
+		CScrollRegion *m_pScrollRegion; // set by CUi when popup is shown
 		SPopupMenuProperties m_Props;
 		char m_aMessage[256];
 		std::vector<std::string> m_vEntries;

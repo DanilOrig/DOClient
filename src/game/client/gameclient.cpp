@@ -41,9 +41,11 @@
 #include "prediction/entities/character.h"
 #include "prediction/entities/projectile.h"
 #include "race.h"
+#include "perf.h"
 #include "render.h"
 
 #include <base/dbg.h>
+
 #include <base/io.h>
 #include <base/log.h>
 #include <base/math.h>
@@ -61,10 +63,12 @@
 #include <engine/favorites.h>
 #include <engine/friends.h>
 #include <engine/graphics.h>
+#include <engine/http.h>
 #include <engine/map.h>
 #include <engine/serverbrowser.h>
 #include <engine/shared/config.h>
 #include <engine/shared/csv.h>
+#include <engine/shared/json.h>
 #include <engine/sound.h>
 #include <engine/storage.h>
 #include <engine/textrender.h>
@@ -157,6 +161,7 @@ void CGameClient::OnConsoleInit()
 					      &m_Broadcast,
 					      &m_ImportantAlert,
 					      &m_DebugHud,
+					      &m_Stt,
 					      &m_TouchControls,
 					      &m_Scoreboard,
 					      &m_Statboard,
@@ -176,6 +181,7 @@ void CGameClient::OnConsoleInit()
 						  &m_Spectator,
 						  &m_Emoticon,
 						  &m_ImportantAlert,
+						  &m_Stt,
 						  &m_Menus,
 						  &m_Controls,
 						  &m_TouchControls,
@@ -296,6 +302,8 @@ void CGameClient::ForceUpdateConsoleRemoteCompletionSuggestions()
 void CGameClient::OnInit()
 {
 	const int64_t OnInitStart = time_get();
+
+	ApplyPerformanceSettings();
 
 	Client()->SetLoadingCallback([this](IClient::ELoadingCallbackDetail Detail) {
 		const char *pTitle;
@@ -449,6 +457,8 @@ void CGameClient::OnInit()
 void CGameClient::OnUpdate()
 {
 	HandleLanguageChanged();
+
+	UpdateClientTypesBestClient();
 
 	CUIElementBase::Init(Ui()); // update static pointer because game and editor use separate UI
 
@@ -642,6 +652,13 @@ void CGameClient::OnReset()
 	m_SuppressEvents = false;
 	m_NewTick = false;
 	m_NewPredictedTick = false;
+
+	m_vSwapTimerEntries.clear();
+
+	std::fill(std::begin(m_aBestClientTag), std::end(m_aBestClientTag), false);
+	m_pBestClientRequest = nullptr;
+	m_BestClientNextRequest = 0;
+	m_aBestClientServerAddress[0] = '\0';
 
 	m_aFlagDropTick[TEAM_RED] = 0;
 	m_aFlagDropTick[TEAM_BLUE] = 0;
@@ -1123,6 +1140,8 @@ void CGameClient::OnMessage(int MsgId, CUnpacker *pUnpacker, int Conn, bool Dumm
 		return;
 	}
 
+	SwapTimerOnMessage(MsgId, pRawMsg, Dummy);
+
 	if(Dummy)
 	{
 		if(MsgId == NETMSGTYPE_SV_READYTOENTER)
@@ -1312,6 +1331,158 @@ void CGameClient::OnStateChange(int NewState, int OldState)
 	// then change the state
 	for(auto &pComponent : m_vpAll)
 		pComponent->OnStateChange(NewState, OldState);
+}
+
+// Swap timer, adapted from the DDNet community swap timer (RushieClient/TClient, DDNet licence)
+int CGameClient::SwapTimerFindClientId(const char *pName) const
+{
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(m_aClients[i].m_Active && !str_utf8_comp_nocase(m_aClients[i].m_aName, pName))
+			return i;
+	}
+	return -1;
+}
+
+void CGameClient::SwapTimerAdd(int FromClientId, int ToClientId)
+{
+	if(FromClientId < 0 || ToClientId < 0 || FromClientId == ToClientId)
+		return;
+	for(const auto &Entry : m_vSwapTimerEntries)
+	{
+		if(Entry.m_FromClientId == FromClientId && Entry.m_ToClientId == ToClientId)
+			return;
+	}
+	m_vSwapTimerEntries.push_back({FromClientId, ToClientId, Client()->GameTick(0)});
+}
+
+void CGameClient::SwapTimerRemove(int FromClientId, int ToClientId)
+{
+	for(size_t i = 0; i < m_vSwapTimerEntries.size(); i++)
+	{
+		if(m_vSwapTimerEntries[i].m_FromClientId == FromClientId && m_vSwapTimerEntries[i].m_ToClientId == ToClientId)
+		{
+			m_vSwapTimerEntries.erase(m_vSwapTimerEntries.begin() + i);
+			return;
+		}
+	}
+}
+
+void CGameClient::SwapTimerRemoveAll(int ClientId)
+{
+	for(size_t i = 0; i < m_vSwapTimerEntries.size(); i++)
+	{
+		if(m_vSwapTimerEntries[i].m_FromClientId == ClientId || m_vSwapTimerEntries[i].m_ToClientId == ClientId)
+		{
+			m_vSwapTimerEntries.erase(m_vSwapTimerEntries.begin() + i);
+			i--;
+		}
+	}
+}
+
+void CGameClient::SwapTimerRemoveSwapped(int ClientId0, int ClientId1)
+{
+	for(size_t i = 0; i < m_vSwapTimerEntries.size(); i++)
+	{
+		const bool Match = (m_vSwapTimerEntries[i].m_FromClientId == ClientId0 && m_vSwapTimerEntries[i].m_ToClientId == ClientId1) ||
+				   (m_vSwapTimerEntries[i].m_FromClientId == ClientId1 && m_vSwapTimerEntries[i].m_ToClientId == ClientId0);
+		if(Match)
+		{
+			m_vSwapTimerEntries.erase(m_vSwapTimerEntries.begin() + i);
+			return;
+		}
+	}
+}
+
+void CGameClient::SwapTimerOnMessage(int MsgId, void *pRawMsg, bool Dummy)
+{
+	if(m_SuppressEvents || !g_Config.m_EcSwapTimer)
+		return;
+
+	if(MsgId == NETMSGTYPE_SV_KILLMSG)
+	{
+		const CNetMsg_Sv_KillMsg *pMsg = static_cast<CNetMsg_Sv_KillMsg *>(pRawMsg);
+		SwapTimerRemoveAll(pMsg->m_Victim);
+	}
+	else if(MsgId == NETMSGTYPE_SV_KILLMSGTEAM)
+	{
+		const CNetMsg_Sv_KillMsgTeam *pMsg = static_cast<CNetMsg_Sv_KillMsgTeam *>(pRawMsg);
+		for(int i = 0; i < MAX_CLIENTS; i++)
+		{
+			if(m_Teams.Team(i) == pMsg->m_Team)
+				SwapTimerRemoveAll(i);
+		}
+	}
+	else if(MsgId == NETMSGTYPE_SV_RACEFINISH)
+	{
+		const CNetMsg_Sv_RaceFinish *pMsg = static_cast<CNetMsg_Sv_RaceFinish *>(pRawMsg);
+		SwapTimerRemoveAll(pMsg->m_ClientId);
+	}
+	else if(MsgId == NETMSGTYPE_SV_CHAT)
+	{
+		const CNetMsg_Sv_Chat *pMsg = static_cast<CNetMsg_Sv_Chat *>(pRawMsg);
+		if(pMsg->m_ClientId != -1)
+			return;
+
+		const int LocalId = m_aLocalIds[g_Config.m_ClDummy ^ (int)Dummy];
+
+		const char *pRequest = str_utf8_find_nocase(pMsg->m_pMessage, " has requested to swap with you. To complete the swap process please wait ");
+		if(pRequest)
+		{
+			const char *pEnd = str_utf8_find_nocase(pMsg->m_pMessage, " seconds and then type ");
+			if(!pEnd)
+				return;
+
+			char aName[MAX_NAME_LENGTH];
+			str_truncate(aName, sizeof(aName), pMsg->m_pMessage, pRequest - pMsg->m_pMessage);
+			SwapTimerAdd(SwapTimerFindClientId(aName), LocalId);
+			return;
+		}
+
+		const char *pRequested = str_utf8_find_nocase(pMsg->m_pMessage, "You have requested to swap with ");
+		if(pRequested)
+		{
+			const char *pNameStart = pRequested + str_length("You have requested to swap with ");
+			const char *pEnd = str_utf8_find_nocase(pNameStart, ". Use /cancelswap to cancel the request.");
+			if(!pEnd)
+				return;
+
+			char aName[MAX_NAME_LENGTH];
+			str_truncate(aName, sizeof(aName), pNameStart, pEnd - pNameStart);
+			SwapTimerAdd(LocalId, SwapTimerFindClientId(aName));
+			return;
+		}
+
+		const char *pCanceled = str_utf8_find_nocase(pMsg->m_pMessage, " has canceled swap with you.");
+		if(pCanceled)
+		{
+			char aName[MAX_NAME_LENGTH];
+			str_truncate(aName, sizeof(aName), pMsg->m_pMessage, pCanceled - pMsg->m_pMessage);
+			SwapTimerRemove(SwapTimerFindClientId(aName), LocalId);
+			return;
+		}
+
+		const char *pCanceledOwn = str_utf8_find_nocase(pMsg->m_pMessage, "You have canceled swap with ");
+		if(pCanceledOwn)
+		{
+			const char *pNameStart = pCanceledOwn + str_length("You have canceled swap with ");
+			char aName[MAX_NAME_LENGTH];
+			str_truncate(aName, sizeof(aName), pNameStart, str_length(pNameStart));
+			SwapTimerRemove(LocalId, SwapTimerFindClientId(aName));
+			return;
+		}
+
+		const char *pSwapped = str_utf8_find_nocase(pMsg->m_pMessage, " has swapped with ");
+		if(pSwapped)
+		{
+			const char *pNameStart = pSwapped + str_length(" has swapped with ");
+			char aName[MAX_NAME_LENGTH];
+			str_truncate(aName, sizeof(aName), pMsg->m_pMessage, pSwapped - pMsg->m_pMessage);
+			char aName2[MAX_NAME_LENGTH];
+			str_truncate(aName2, sizeof(aName2), pNameStart, str_length(pNameStart));
+			SwapTimerRemoveSwapped(SwapTimerFindClientId(aName), SwapTimerFindClientId(aName2));
+		}
+	}
 }
 
 void CGameClient::OnShutdown()
@@ -1821,6 +1992,18 @@ void CGameClient::OnNewSnapshot(bool DummySwapped)
 					pClient->m_UseCustomColor = pInfo->m_UseCustomColor;
 					pClient->m_ColorBody = pInfo->m_ColorBody;
 					pClient->m_ColorFeet = pInfo->m_ColorFeet;
+
+					// client indicator from the high byte of the colors, set by the clients themselves
+					const unsigned int BodyTag = (unsigned int)pInfo->m_ColorBody >> 24;
+					const unsigned int FeetTag = (unsigned int)pInfo->m_ColorFeet >> 24;
+					if(BodyTag == 101 || BodyTag == 99)
+						str_copy(pClient->m_aClientTag, "[EC]");
+					else if(BodyTag == 4 && FeetTag == 0)
+						str_copy(pClient->m_aClientTag, "[RC]");
+					else if((BodyTag == 1 || BodyTag == 2 || BodyTag == 3 || BodyTag == 5) && FeetTag == 0)
+						str_copy(pClient->m_aClientTag, "[C]");
+					else
+						str_copy(pClient->m_aClientTag, "[DD]");
 				}
 			}
 			else if(Item.m_Type == NETOBJTYPE_PLAYERINFO)
@@ -2617,6 +2800,132 @@ void CGameClient::ApplyPreInputs(int Tick, bool Direct, CGameWorld &GameWorld)
 	}
 }
 
+// client type indicator: BestClient users are looked up in the public BestClient list
+void CGameClient::UpdateClientTypesBestClient()
+{
+	if(!g_Config.m_EcClientTypes || !g_Config.m_EcClientTypesBestClient || Client()->State() != IClient::STATE_ONLINE)
+	{
+		m_pBestClientRequest = nullptr;
+		std::fill(std::begin(m_aBestClientTag), std::end(m_aBestClientTag), false);
+		m_aBestClientServerAddress[0] = '\0';
+		return;
+	}
+
+	char aServerAddress[128];
+	net_addr_str(&Client()->ServerAddress(), aServerAddress, sizeof(aServerAddress), true);
+
+	if(str_comp(aServerAddress, m_aBestClientServerAddress) != 0)
+	{
+		str_copy(m_aBestClientServerAddress, aServerAddress);
+		std::fill(std::begin(m_aBestClientTag), std::end(m_aBestClientTag), false);
+		m_BestClientNextRequest = 0;
+	}
+
+	if(m_pBestClientRequest)
+	{
+		if(!m_pBestClientRequest->Done())
+			return;
+
+		if(m_pBestClientRequest->State() == EHttpState::DONE)
+		{
+			const json_value *pJson = m_pBestClientRequest->ResultJson();
+			if(pJson && pJson->type == json_array)
+			{
+				std::fill(std::begin(m_aBestClientTag), std::end(m_aBestClientTag), false);
+				for(int i = 0; i < json_array_length(pJson); i++)
+				{
+					const json_value *pServer = json_array_get(pJson, i);
+					if(!pServer || pServer->type != json_object)
+						continue;
+					const json_value *pAddress = json_object_get(pServer, "server_address");
+					if(!pAddress || pAddress->type != json_string || str_comp(json_string_get(pAddress), m_aBestClientServerAddress) != 0)
+						continue;
+					const json_value *pPlayers = json_object_get(pServer, "players");
+					if(!pPlayers || pPlayers->type != json_array)
+						continue;
+					for(int j = 0; j < json_array_length(pPlayers); j++)
+					{
+						const json_value *pPlayer = json_array_get(pPlayers, j);
+						if(!pPlayer || pPlayer->type != json_object)
+							continue;
+						const json_value *pClientId = json_object_get(pPlayer, "client_id");
+						if(!pClientId || pClientId->type != json_integer)
+							continue;
+						const int ClientId = json_int_get(pClientId);
+						if(ClientId >= 0 && ClientId < MAX_CLIENTS)
+							m_aBestClientTag[ClientId] = true;
+					}
+				}
+			}
+		}
+		m_pBestClientRequest = nullptr;
+	}
+
+	if(time_get() < m_BestClientNextRequest)
+		return;
+
+	std::shared_ptr<IHttpRequest> pGet = HttpGet("https://150.241.70.188:8779/users.json");
+	pGet->Timeout(CTimeout{5000, 8000, 0, 0});
+	pGet->MaxResponseSize(4 * 1024 * 1024);
+	pGet->FailOnErrorStatus(false);
+	pGet->InsecureSsl(true);
+	pGet->LogProgress(HTTPLOG::FAILURE);
+	Http()->Run(pGet);
+	m_pBestClientRequest = pGet;
+	m_BestClientNextRequest = time_get() + 30 * time_freq();
+}
+
+// fast input: predict with the newest local input before the next tick is received
+bool CGameClient::CheckNewInput()
+{
+	return m_Controls.CheckNewInput();
+}
+
+bool CGameClient::GetDummyFastInput(CNetObj_PlayerInput &DummyFastInput, const CNetObj_PlayerInput *pDummyInputData, const CCharacter *pDummyChar, int LocalTee, int DummyTee) const
+{
+	if(!PredictDummy() || !pDummyChar)
+		return false;
+
+	if(g_Config.m_ClDummyHammer)
+	{
+		DummyFastInput = m_HammerInput;
+		return true;
+	}
+
+	if(g_Config.m_ClDummyCopyMoves)
+	{
+		DummyFastInput = m_Controls.m_aFastInput[LocalTee];
+		DummyFastInput.m_Fire = m_Controls.m_aFastInput[DummyTee].m_Fire;
+		DummyFastInput.m_WantedWeapon = m_Controls.m_aFastInput[DummyTee].m_WantedWeapon;
+		DummyFastInput.m_NextWeapon = m_Controls.m_aFastInput[DummyTee].m_NextWeapon;
+		DummyFastInput.m_PrevWeapon = m_Controls.m_aFastInput[DummyTee].m_PrevWeapon;
+		if(g_Config.m_ClDummyControl)
+		{
+			const CNetObj_PlayerInput BaseDummyInput = pDummyInputData ? *pDummyInputData : CNetObj_PlayerInput{};
+			DummyFastInput.m_Jump = BaseDummyInput.m_Jump;
+			DummyFastInput.m_Fire = BaseDummyInput.m_Fire;
+			DummyFastInput.m_Hook = BaseDummyInput.m_Hook;
+		}
+		return true;
+	}
+
+	if(g_Config.m_ClDummyControl)
+	{
+		const CNetObj_PlayerInput BaseDummyInput = pDummyInputData ? *pDummyInputData : CNetObj_PlayerInput{};
+		DummyFastInput = BaseDummyInput;
+		DummyFastInput.m_Direction = m_Controls.m_aFastInput[DummyTee].m_Direction;
+		DummyFastInput.m_PlayerFlags = m_Controls.m_aFastInput[DummyTee].m_PlayerFlags;
+		DummyFastInput.m_TargetX = m_Controls.m_aFastInput[DummyTee].m_TargetX;
+		DummyFastInput.m_TargetY = m_Controls.m_aFastInput[DummyTee].m_TargetY;
+		DummyFastInput.m_WantedWeapon = m_Controls.m_aFastInput[DummyTee].m_WantedWeapon;
+		DummyFastInput.m_NextWeapon = m_Controls.m_aFastInput[DummyTee].m_NextWeapon;
+		DummyFastInput.m_PrevWeapon = m_Controls.m_aFastInput[DummyTee].m_PrevWeapon;
+		return true;
+	}
+
+	return false;
+}
+
 void CGameClient::OnPredict()
 {
 	// store the previous values so we can detect prediction errors
@@ -2678,8 +2987,15 @@ void CGameClient::OnPredict()
 		pDummyChar = m_PredictedWorld.GetCharacterById(m_aLocalIds[!g_Config.m_ClDummy]);
 
 	int PredictionTick = Client()->GetPredictionTick();
+
+	const int FastInputTicks = g_Config.m_EcFastInput ? (g_Config.m_EcFastInputAmount + 19) / 20 : 0;
+	const int FinalTickRegular = Client()->PredGameTick(g_Config.m_ClDummy);
+	const int FinalTickSelf = FinalTickRegular + FastInputTicks;
+	const int LocalTee = g_Config.m_ClDummy ^ m_IsDummySwapping;
+	const int DummyTee = LocalTee ^ 1;
+
 	// predict
-	for(int Tick = Client()->GameTick(g_Config.m_ClDummy) + 1; Tick <= Client()->PredGameTick(g_Config.m_ClDummy); Tick++)
+	for(int Tick = Client()->GameTick(g_Config.m_ClDummy) + 1; Tick <= FinalTickSelf; Tick++)
 	{
 		// fetch the previous characters
 		if(Tick == PredictionTick)
@@ -2705,7 +3021,21 @@ void CGameClient::OnPredict()
 		// apply inputs and tick
 		CNetObj_PlayerInput *pInputData = (CNetObj_PlayerInput *)Client()->GetInput(Tick, m_IsDummySwapping);
 		CNetObj_PlayerInput *pDummyInputData = !pDummyChar ? nullptr : (CNetObj_PlayerInput *)Client()->GetInput(Tick, m_IsDummySwapping ^ 1);
+		CNetObj_PlayerInput DummyFastInput{};
+
+		if(FastInputTicks > 0 && Tick > FinalTickRegular)
+		{
+			pInputData = &m_Controls.m_aFastInput[LocalTee];
+			if(GetDummyFastInput(DummyFastInput, pDummyInputData, pDummyChar, LocalTee, DummyTee))
+				pDummyInputData = &DummyFastInput;
+		}
+
 		bool DummyFirst = pInputData && pDummyInputData && pDummyChar->GetCid() < pLocalChar->GetCid();
+
+		// predicted events during fast input over-run ticks are not real
+		const bool TempPredictEvents = m_PredictedWorld.m_WorldConfig.m_PredictEvents;
+		if(Tick > FinalTickRegular)
+			m_PredictedWorld.m_WorldConfig.m_PredictEvents = false;
 
 		if(DummyFirst)
 			pDummyChar->OnDirectInput(pDummyInputData);
@@ -2725,6 +3055,8 @@ void CGameClient::OnPredict()
 		ApplyPreInputs(Tick, false, m_PredictedWorld);
 
 		m_PredictedWorld.Tick();
+
+		m_PredictedWorld.m_WorldConfig.m_PredictEvents = TempPredictEvents;
 
 		// fetch the current characters
 		if(Tick == PredictionTick)
@@ -2753,7 +3085,7 @@ void CGameClient::OnPredict()
 			}
 
 		// check if we want to trigger effects
-		if(Tick > m_aLastNewPredictedTick[Dummy])
+		if(Tick <= FinalTickRegular && Tick > m_aLastNewPredictedTick[Dummy])
 		{
 			m_aLastNewPredictedTick[Dummy] = Tick;
 			m_NewPredictedTick = true;
@@ -2778,7 +3110,7 @@ void CGameClient::OnPredict()
 		}
 
 		// check if we want to trigger predicted airjump for dummy
-		if(AntiPingPlayers() && pDummyChar && Tick > m_aLastNewPredictedTick[!Dummy])
+		if(AntiPingPlayers() && pDummyChar && Tick <= FinalTickRegular && Tick > m_aLastNewPredictedTick[!Dummy])
 		{
 			m_aLastNewPredictedTick[!Dummy] = Tick;
 			vec2 Pos = pDummyChar->Core()->m_Pos;
@@ -2788,7 +3120,8 @@ void CGameClient::OnPredict()
 					m_Effects.AirJump(Pos, 1.0f, 1.0f);
 		}
 
-		HandlePredictedEvents(Tick);
+		if(Tick <= FinalTickRegular)
+			HandlePredictedEvents(Tick);
 	}
 
 	// detect mispredictions of other players and make corrections smoother when possible
@@ -3034,6 +3367,7 @@ void CGameClient::CClientData::Reset()
 
 	m_aName[0] = '\0';
 	m_aClan[0] = '\0';
+	str_copy(m_aClientTag, "[DD]");
 	m_Country = CountryCode::DEFAULT;
 	str_copy(m_aSkinName, "default");
 
@@ -3801,6 +4135,7 @@ void CGameClient::UpdateSpectatorCursor()
 
 void CGameClient::UpdateRenderedCharacters()
 {
+	const int FastInputTicks = g_Config.m_EcFastInput ? (g_Config.m_EcFastInputAmount + 19) / 20 : 0;
 	for(int i = 0; i < MAX_CLIENTS; i++)
 	{
 		if(!m_Snap.m_aCharacters[i].m_Active)
@@ -3833,6 +4168,8 @@ void CGameClient::UpdateRenderedCharacters()
 			if(i == m_Snap.m_LocalClientId || IsDummy)
 			{
 				m_aClients[i].m_IsPredictedLocal = true;
+				if(g_Config.m_EcFastInput && FastInputTicks > 0)
+					Pos = GetFastInputPos(i);
 				if(AntiPingGunfire() && ((pChar->m_NinjaJetpack && pChar->m_FreezeTime == 0) || m_Snap.m_aCharacters[i].m_Cur.m_Weapon != WEAPON_NINJA || m_Snap.m_aCharacters[i].m_Cur.m_Weapon == m_aClients[i].m_Predicted.m_ActiveWeapon))
 				{
 					m_aClients[i].m_RenderCur.m_AttackTick = pChar->GetAttackTick();
@@ -3848,6 +4185,9 @@ void CGameClient::UpdateRenderedCharacters()
 
 				if(g_Config.m_ClAntiPingSmooth)
 					Pos = GetSmoothPos(i);
+
+				if(g_Config.m_EcFastInputOthers && FastInputTicks > 0)
+					Pos = GetFastInputPos(i);
 			}
 		}
 		m_aClients[i].m_RenderPos = Pos;
@@ -4002,10 +4342,41 @@ vec2 CGameClient::GetSmoothPos(int ClientId)
 			int SmoothTick;
 			float SmoothIntra;
 			Client()->GetSmoothTick(&SmoothTick, &SmoothIntra, MixAmount);
-			if(SmoothTick > 0 && m_aClients[ClientId].m_aPredTick[(SmoothTick - 1) % 200] >= Client()->PrevGameTick(g_Config.m_ClDummy) && m_aClients[ClientId].m_aPredTick[SmoothTick % 200] <= Client()->PredGameTick(g_Config.m_ClDummy))
+
+			const int FastInputTicks = g_Config.m_EcFastInput ? (g_Config.m_EcFastInputAmount + 19) / 20 : 0;
+			if(ClientId != m_Snap.m_LocalClientId && g_Config.m_EcFastInputOthers && FastInputTicks > 0)
+				SmoothTick += FastInputTicks;
+
+			if(SmoothTick > 0 && m_aClients[ClientId].m_aPredTick[(SmoothTick - 1) % 200] >= Client()->PrevGameTick(g_Config.m_ClDummy) && m_aClients[ClientId].m_aPredTick[SmoothTick % 200] <= Client()->PredGameTick(g_Config.m_ClDummy) + FastInputTicks)
 				Pos[i] = mix(m_aClients[ClientId].m_aPredPos[(SmoothTick - 1) % 200][i], m_aClients[ClientId].m_aPredPos[SmoothTick % 200][i], SmoothIntra);
 		}
 	}
+	return Pos;
+}
+
+vec2 CGameClient::GetFastInputPos(int ClientId)
+{
+	const float PredIntraTick = Client()->PredIntraGameTick(g_Config.m_ClDummy);
+	const int PredTick = Client()->PredGameTick(g_Config.m_ClDummy);
+
+	vec2 Pos = mix(m_aClients[ClientId].m_PrevPredicted.m_Pos, m_aClients[ClientId].m_Predicted.m_Pos, PredIntraTick);
+
+	const float FastInputIntra = (g_Config.m_EcFastInputAmount % 20) / 20.0f;
+	int FastInputTicks = g_Config.m_EcFastInputAmount / 20;
+
+	float IntraRemainder = 0.0f;
+	const float FinalIntra = std::modf(PredIntraTick + FastInputIntra, &IntraRemainder);
+	FastInputTicks += static_cast<int>(IntraRemainder);
+
+	const int FinalTick = PredTick + FastInputTicks;
+
+	if(FinalTick > 0 &&
+		m_aClients[ClientId].m_aPredTick[(FinalTick - 1) % 200] >= Client()->PrevGameTick(g_Config.m_ClDummy) &&
+		m_aClients[ClientId].m_aPredTick[FinalTick % 200] <= PredTick + FastInputTicks)
+	{
+		Pos = mix(m_aClients[ClientId].m_aPredPos[(FinalTick - 1) % 200], m_aClients[ClientId].m_aPredPos[FinalTick % 200], FinalIntra);
+	}
+
 	return Pos;
 }
 

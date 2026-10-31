@@ -171,14 +171,11 @@ void CLayerTele::BrushDraw(CLayer *pBrush, vec2 WorldPos)
 
 void CLayerTele::RecordStateChange(int x, int y, STeleTileStateChange::SData Previous, STeleTileStateChange::SData Current)
 {
-	STeleTileStateChange &Change = m_History[y][x];
-	if(Change.m_Changed)
-	{
-		Change.m_Current = Current;
-	}
+	if(!m_History[y][x].m_Changed)
+		m_History[y][x] = STeleTileStateChange{true, Previous, Current};
 	else
 	{
-		Change = STeleTileStateChange{true, Previous, Current};
+		m_History[y][x].m_Current = Current;
 	}
 }
 

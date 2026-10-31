@@ -25,6 +25,9 @@
 CControls::CControls()
 {
 	mem_zero(&m_aLastData, sizeof(m_aLastData));
+	mem_zero(&m_aFastInput, sizeof(m_aFastInput));
+	m_FastInputHookAction = false;
+	m_FastInputFireAction = false;
 	std::fill(std::begin(m_aMouseOnAction), std::end(m_aMouseOnAction), false);
 	std::fill(std::begin(m_aMousePos), std::end(m_aMousePos), vec2(0.0f, 0.0f));
 	std::fill(std::begin(m_aMousePosOnAction), std::end(m_aMousePosOnAction), vec2(0.0f, 0.0f));
@@ -302,6 +305,9 @@ int CControls::SnapInput(int *pData)
 			m_aMousePosOnAction[g_Config.m_ClDummy] = vec2(0.0f, 0.0f);
 		}
 
+		m_FastInputHookAction = false;
+		m_FastInputFireAction = false;
+
 		if(!m_aInputData[g_Config.m_ClDummy].m_TargetX && !m_aInputData[g_Config.m_ClDummy].m_TargetY)
 		{
 			m_aInputData[g_Config.m_ClDummy].m_TargetX = 1;
@@ -329,13 +335,16 @@ int CControls::SnapInput(int *pData)
 				pDummyInput->m_PlayerFlags = m_aInputData[g_Config.m_ClDummy].m_PlayerFlags;
 				pDummyInput->m_TargetX = m_aInputData[g_Config.m_ClDummy].m_TargetX;
 				pDummyInput->m_TargetY = m_aInputData[g_Config.m_ClDummy].m_TargetY;
-				pDummyInput->m_WantedWeapon = m_aInputData[g_Config.m_ClDummy].m_WantedWeapon;
 
 				if(!g_Config.m_ClDummyControl)
 					pDummyInput->m_Fire += m_aInputData[g_Config.m_ClDummy].m_Fire - m_aLastData[g_Config.m_ClDummy].m_Fire;
 
-				pDummyInput->m_NextWeapon += m_aInputData[g_Config.m_ClDummy].m_NextWeapon - m_aLastData[g_Config.m_ClDummy].m_NextWeapon;
-				pDummyInput->m_PrevWeapon += m_aInputData[g_Config.m_ClDummy].m_PrevWeapon - m_aLastData[g_Config.m_ClDummy].m_PrevWeapon;
+				if(!g_Config.m_EcNoCopyWeapon)
+				{
+					pDummyInput->m_WantedWeapon = m_aInputData[g_Config.m_ClDummy].m_WantedWeapon;
+					pDummyInput->m_NextWeapon += m_aInputData[g_Config.m_ClDummy].m_NextWeapon - m_aLastData[g_Config.m_ClDummy].m_NextWeapon;
+					pDummyInput->m_PrevWeapon += m_aInputData[g_Config.m_ClDummy].m_PrevWeapon - m_aLastData[g_Config.m_ClDummy].m_PrevWeapon;
+				}
 			}
 
 			m_aInputData[!g_Config.m_ClDummy] = *pDummyInput;
@@ -444,6 +453,9 @@ bool CControls::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
 	if(GameClient()->IsWorldPaused())
 		return false;
 
+	if(CursorType == IInput::CURSOR_MOUSE && GameClient()->m_Chat.IsActive())
+		return true;
+
 	if(CursorType == IInput::CURSOR_JOYSTICK && g_Config.m_InpControllerAbsolute && GameClient()->m_Snap.m_pGameInfoObj && !GameClient()->m_Snap.m_SpecInfo.m_Active)
 	{
 		vec2 AbsoluteDirection;
@@ -523,4 +535,78 @@ float CControls::GetMaxMouseDistance() const
 	float DeadZone = g_Config.m_ClDyncam ? g_Config.m_ClDyncamDeadzone : g_Config.m_ClMouseDeadzone;
 	float MaxDistance = g_Config.m_ClDyncam ? g_Config.m_ClDyncamMaxDistance : g_Config.m_ClMouseMaxDistance;
 	return std::min(FollowFactor != 0.0f ? CameraMaxDistance / FollowFactor + DeadZone : MaxDistance, MaxDistance);
+}
+
+bool CControls::CheckNewInput()
+{
+	bool NewInput[NUM_DUMMIES] = {};
+	for(int Dummy = 0; Dummy < NUM_DUMMIES; Dummy++)
+	{
+		CNetObj_PlayerInput TestInput = m_aInputData[Dummy];
+		if(Dummy == g_Config.m_ClDummy)
+		{
+			TestInput.m_Direction = 0;
+			if(m_aInputDirectionLeft[Dummy] && !m_aInputDirectionRight[Dummy])
+				TestInput.m_Direction = -1;
+			if(!m_aInputDirectionLeft[Dummy] && m_aInputDirectionRight[Dummy])
+				TestInput.m_Direction = 1;
+		}
+
+		if(m_aFastInput[Dummy].m_Direction != TestInput.m_Direction)
+			NewInput[Dummy] = true;
+		if(m_aFastInput[Dummy].m_Hook != TestInput.m_Hook)
+			NewInput[Dummy] = true;
+		if(m_aFastInput[Dummy].m_Fire != TestInput.m_Fire)
+			NewInput[Dummy] = true;
+		if(m_aFastInput[Dummy].m_Jump != TestInput.m_Jump)
+			NewInput[Dummy] = true;
+		if(m_aFastInput[Dummy].m_NextWeapon != TestInput.m_NextWeapon)
+			NewInput[Dummy] = true;
+		if(m_aFastInput[Dummy].m_PrevWeapon != TestInput.m_PrevWeapon)
+			NewInput[Dummy] = true;
+		if(m_aFastInput[Dummy].m_WantedWeapon != TestInput.m_WantedWeapon)
+			NewInput[Dummy] = true;
+
+		// When sub tick aiming is disabled on the first tick of a hook it's viable to update the fast input
+		// prediction on every mouse movement before the hook+direction input is sent and finalized.
+		const bool RefreshHookAim = g_Config.m_EcFastInputRepredictHook && !g_Config.m_ClSubTickAiming &&
+					    Dummy == g_Config.m_ClDummy && TestInput.m_Hook && !m_aLastData[Dummy].m_Hook;
+		bool SetMousePos = RefreshHookAim;
+		// We need to be careful about how we manage the mouse position to avoid mispredicted hooks and fires
+		// on the first tick that they activate before we know what mouse position we actually sent to the server
+		if(Dummy == g_Config.m_ClDummy)
+		{
+			if(m_aFastInput[Dummy].m_Hook == 0 && TestInput.m_Hook == 1)
+			{
+				m_FastInputHookAction = true;
+				SetMousePos = true;
+			}
+			if(m_aFastInput[Dummy].m_Fire != TestInput.m_Fire && TestInput.m_Fire % 2 == 1)
+			{
+				m_FastInputFireAction = true;
+				SetMousePos = true;
+			}
+			if(!m_FastInputHookAction && !m_FastInputFireAction)
+			{
+				SetMousePos = true;
+			}
+		}
+
+		if(SetMousePos)
+		{
+			TestInput.m_TargetX = (int)m_aMousePos[Dummy].x;
+			TestInput.m_TargetY = (int)m_aMousePos[Dummy].y;
+			if(RefreshHookAim && (TestInput.m_TargetX != m_aFastInput[Dummy].m_TargetX || TestInput.m_TargetY != m_aFastInput[Dummy].m_TargetY))
+				NewInput[Dummy] = true;
+		}
+		else
+		{
+			TestInput.m_TargetX = m_aFastInput[Dummy].m_TargetX;
+			TestInput.m_TargetY = m_aFastInput[Dummy].m_TargetY;
+		}
+
+		m_aFastInput[Dummy] = TestInput;
+	}
+
+	return NewInput[0] || NewInput[1];
 }

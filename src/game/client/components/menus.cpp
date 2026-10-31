@@ -64,6 +64,13 @@ CMenus::CMenus()
 	m_Popup = POPUP_NONE;
 	m_MenuPage = 0;
 	m_GamePage = PAGE_GAME;
+	m_SettingsPageChangeTime = 0;
+	m_LastSettingsPage = -1;
+	m_SettingsSplitY = -1.0f;
+	m_SettingsViewY = 0.0f;
+	m_SettingsSplitX = -1.0f;
+	m_SettingsViewX = 0.0f;
+	m_WasInSettings = false;
 
 	m_NeedRestartGraphics = false;
 	m_NeedRestartSound = false;
@@ -565,8 +572,7 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 		}
 		Ui()->DoToolTip(&s_FavoritesButton, &Button, Localize("Favorites"));
 
-		const std::vector<const CCommunity *> vpFavoriteCommunities = ServerBrowser()->FavoriteCommunities();
-		const int MaxPage = PAGE_FAVORITES + vpFavoriteCommunities.size();
+		const int MaxPage = PAGE_FAVORITES + ServerBrowser()->FavoriteCommunities().size();
 		if(
 			!Ui()->IsPopupOpen() &&
 			CLineInput::GetActiveInput() == nullptr &&
@@ -592,7 +598,7 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 		static_assert(std::size(s_aFavoriteCommunityButtons) == (size_t)PAGE_FAVORITE_COMMUNITY_5 - PAGE_FAVORITE_COMMUNITY_1 + 1);
 		static_assert(std::size(s_aFavoriteCommunityButtons) == (size_t)BIT_TAB_FAVORITE_COMMUNITY_5 - BIT_TAB_FAVORITE_COMMUNITY_1 + 1);
 		static_assert(std::size(s_aFavoriteCommunityButtons) == (size_t)IServerBrowser::TYPE_FAVORITE_COMMUNITY_5 - IServerBrowser::TYPE_FAVORITE_COMMUNITY_1 + 1);
-		for(const CCommunity *pCommunity : vpFavoriteCommunities)
+		for(const CCommunity *pCommunity : ServerBrowser()->FavoriteCommunities())
 		{
 			if(Box.w < BrowserButtonWidth)
 				break;
@@ -843,6 +849,8 @@ void CMenus::OnInit()
 
 	Console()->Chain("ui_page", ConchainUiPageUpdate, this);
 
+	RegisterDOClientCommands();
+
 	Console()->Chain("snd_enable", ConchainUpdateMusicState, this);
 	Console()->Chain("snd_enable_music", ConchainUpdateMusicState, this);
 	Console()->Chain("cl_background_entities", ConchainBackgroundEntities, this);
@@ -1016,6 +1024,14 @@ void CMenus::Render()
 	// while rendering which causes frames with broken user interface.
 	const IClient::EClientState ClientState = Client()->State();
 
+	// trigger the settings reveal animation when the settings screen is opened
+	{
+		const bool InSettings = m_MenuPage == PAGE_SETTINGS || m_GamePage == PAGE_SETTINGS;
+		if(InSettings && !m_WasInSettings)
+			m_SettingsPageChangeTime = time();
+		m_WasInSettings = InSettings;
+	}
+
 	if(ClientState == IClient::STATE_ONLINE || ClientState == IClient::STATE_DEMOPLAYBACK)
 	{
 		ms_ColorTabbarInactive = ms_ColorTabbarInactiveIngame;
@@ -1102,6 +1118,9 @@ void CMenus::Render()
 		{
 			CUIRect TabBar, MainView;
 			Screen.HSplitTop(24.0f, &TabBar, &MainView);
+
+			if(m_GamePage != PAGE_SETTINGS)
+				m_LastSettingsPage = -1;
 
 			if(m_GamePage == PAGE_GAME)
 			{
@@ -2275,6 +2294,7 @@ void CMenus::SetActive(bool Active)
 	{
 		Ui()->SetHotItem(nullptr);
 		Ui()->SetActiveItem(nullptr);
+		m_LastSettingsPage = -1;
 	}
 	m_MenuActive = Active;
 	if(!m_MenuActive)

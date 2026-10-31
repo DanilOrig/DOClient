@@ -1312,7 +1312,8 @@ void CHud::RenderSpectatorCount()
 
 	if(g_Config.m_ClShowhudDummyActions && !(GameClient()->m_Snap.m_pGameInfoObj->m_GameStateFlags & GAMESTATEFLAG_GAMEOVER) && Client()->DummyConnected())
 	{
-		StartY = StartY - 29.0f - 4; // dummy actions height and padding
+		const float DummyActionsHeight = 13.0f * 2 + 3.0f + (g_Config.m_EcDummyAdvancedActions ? 13.0f : 0.0f);
+		StartY = StartY - DummyActionsHeight - 4; // dummy actions height and padding
 	}
 
 	Graphics()->DrawRect(StartX, StartY, BoxWidth, BoxHeight, ColorRGBA(0.0f, 0.0f, 0.0f, 0.4f), IGraphics::CORNER_L, 5.0f);
@@ -1333,7 +1334,7 @@ void CHud::RenderDummyActions()
 		return;
 	}
 	// render small dummy actions hud
-	const float BoxHeight = 29.0f;
+	const float BoxHeight = 13.0f * 2 + 3.0f + (g_Config.m_EcDummyAdvancedActions ? 13.0f : 0.0f);
 	const float BoxWidth = 16.0f;
 
 	float StartX = m_Width - BoxWidth;
@@ -1368,6 +1369,16 @@ void CHud::RenderDummyActions()
 	}
 	Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudDummyCopy);
 	Graphics()->RenderQuadContainerAsSprite(m_HudQuadContainerIndex, m_DummyCopyOffset, x, y);
+	if(!g_Config.m_EcDummyAdvancedActions)
+		return;
+	Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+
+	y += 13;
+	TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
+	TextRender()->TextColor(1.0f, 1.0f, 1.0f, g_Config.m_ClDummyControl ? 1.0f : 0.4f);
+	TextRender()->Text(x, y + 2.0f, 9.0f, FontIcon::KEYBOARD, -1.0f);
+	TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+	TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
 }
 
 inline int CHud::GetDigitsIndex(int Value, int Max)
@@ -1390,9 +1401,23 @@ inline int CHud::GetDigitsIndex(int Value, int Max)
 
 inline float CHud::GetMovementInformationBoxHeight()
 {
+	const bool DummyConnected = Client()->DummyConnected();
 	if(GameClient()->m_Snap.m_SpecInfo.m_Active && (GameClient()->m_Snap.m_SpecInfo.m_SpectatorId == SPEC_FREEVIEW || GameClient()->m_aClients[GameClient()->m_Snap.m_SpecInfo.m_SpectatorId].m_SpecCharPresent))
-		return g_Config.m_ClShowhudPlayerPosition ? 3.0f * MOVEMENT_INFORMATION_LINE_HEIGHT + 2.0f : 0.0f;
+	{
+		if(!g_Config.m_ClShowhudPlayerPosition)
+			return 0.0f;
+		float BoxHeight = 3.0f * MOVEMENT_INFORMATION_LINE_HEIGHT + 2.0f;
+		if(g_Config.m_EcDummyShowPosition && DummyConnected)
+			BoxHeight += 2.0f * MOVEMENT_INFORMATION_LINE_HEIGHT;
+		return BoxHeight;
+	}
 	float BoxHeight = 3.0f * MOVEMENT_INFORMATION_LINE_HEIGHT * (g_Config.m_ClShowhudPlayerPosition + g_Config.m_ClShowhudPlayerSpeed) + 2.0f * MOVEMENT_INFORMATION_LINE_HEIGHT * g_Config.m_ClShowhudPlayerAngle;
+	if(g_Config.m_ClShowhudPlayerPosition && g_Config.m_EcDummyShowPosition && DummyConnected)
+		BoxHeight += 2.0f * MOVEMENT_INFORMATION_LINE_HEIGHT;
+	if(g_Config.m_ClShowhudPlayerSpeed && g_Config.m_EcDummyShowSpeed && DummyConnected)
+		BoxHeight += 2.0f * MOVEMENT_INFORMATION_LINE_HEIGHT;
+	if(g_Config.m_ClShowhudPlayerAngle && g_Config.m_EcDummyShowAngle && DummyConnected)
+		BoxHeight += MOVEMENT_INFORMATION_LINE_HEIGHT;
 	if(g_Config.m_ClShowhudPlayerPosition || g_Config.m_ClShowhudPlayerSpeed || g_Config.m_ClShowhudPlayerAngle)
 	{
 		BoxHeight += 2.0f;
@@ -1500,25 +1525,53 @@ void CHud::RenderMovementInformation()
 	Graphics()->DrawRect(StartX, StartY, BoxWidth, BoxHeight, ColorRGBA(0.0f, 0.0f, 0.0f, 0.4f), IGraphics::CORNER_L, 5.0f);
 
 	const CMovementInformation Info = GetMovementInformation(ClientId, g_Config.m_ClDummy);
+	const bool ShowDummyInfo = Client()->DummyConnected() && (g_Config.m_EcDummyShowPosition || g_Config.m_EcDummyShowSpeed || g_Config.m_EcDummyShowAngle);
+	CMovementInformation DummyInfo{};
+	if(ShowDummyInfo)
+		DummyInfo = GetMovementInformation(GameClient()->m_aLocalIds[!g_Config.m_ClDummy], g_Config.m_ClDummy);
 
 	float y = StartY + LineSpacer * 2.0f;
 	const float LeftX = StartX + 2.0f;
 	const float RightX = m_Width - 2.0f;
 
+	char aBuf[32];
+
 	if(g_Config.m_ClShowhudPlayerPosition)
 	{
+		const bool ShowDummyPosition = ShowDummyInfo && g_Config.m_EcDummyShowPosition;
+		const bool SamePosX = ShowDummyPosition && std::round(Info.m_Pos.x * 100.0f) == std::round(DummyInfo.m_Pos.x * 100.0f);
+		const bool SamePosY = ShowDummyPosition && std::round(Info.m_Pos.y * 100.0f) == std::round(DummyInfo.m_Pos.y * 100.0f);
+		const ColorRGBA Green(0.2f, 1.0f, 0.2f, 1.0f);
+
 		TextRender()->Text(LeftX, y, Fontsize, Localize("Position:"), -1.0f);
 		y += MOVEMENT_INFORMATION_LINE_HEIGHT;
 
 		TextRender()->Text(LeftX, y, Fontsize, "X:", -1.0f);
 		UpdateMovementInformationTextContainer(m_aPlayerPositionContainers[0], Fontsize, Info.m_Pos.x, m_aPlayerPrevPosition[0]);
-		RenderMovementInformationTextContainer(m_aPlayerPositionContainers[0], TextRender()->DefaultTextColor(), RightX, y);
+		RenderMovementInformationTextContainer(m_aPlayerPositionContainers[0], SamePosX ? Green : TextRender()->DefaultTextColor(), RightX, y);
 		y += MOVEMENT_INFORMATION_LINE_HEIGHT;
 
 		TextRender()->Text(LeftX, y, Fontsize, "Y:", -1.0f);
 		UpdateMovementInformationTextContainer(m_aPlayerPositionContainers[1], Fontsize, Info.m_Pos.y, m_aPlayerPrevPosition[1]);
-		RenderMovementInformationTextContainer(m_aPlayerPositionContainers[1], TextRender()->DefaultTextColor(), RightX, y);
+		RenderMovementInformationTextContainer(m_aPlayerPositionContainers[1], SamePosY ? Green : TextRender()->DefaultTextColor(), RightX, y);
 		y += MOVEMENT_INFORMATION_LINE_HEIGHT;
+
+		if(ShowDummyPosition)
+		{
+			TextRender()->Text(LeftX, y, Fontsize, "DX:", -1.0f);
+			str_format(aBuf, sizeof(aBuf), "%.2f", std::round(DummyInfo.m_Pos.x * 100.0f) / 100.0f);
+			TextRender()->TextColor(SamePosX ? Green : TextRender()->DefaultTextColor());
+			TextRender()->Text(RightX - TextRender()->TextWidth(Fontsize, aBuf), y, Fontsize, aBuf, -1.0f);
+			TextRender()->TextColor(TextRender()->DefaultTextColor());
+			y += MOVEMENT_INFORMATION_LINE_HEIGHT;
+
+			TextRender()->Text(LeftX, y, Fontsize, "DY:", -1.0f);
+			str_format(aBuf, sizeof(aBuf), "%.2f", std::round(DummyInfo.m_Pos.y * 100.0f) / 100.0f);
+			TextRender()->TextColor(SamePosY ? Green : TextRender()->DefaultTextColor());
+			TextRender()->Text(RightX - TextRender()->TextWidth(Fontsize, aBuf), y, Fontsize, aBuf, -1.0f);
+			TextRender()->TextColor(TextRender()->DefaultTextColor());
+			y += MOVEMENT_INFORMATION_LINE_HEIGHT;
+		}
 	}
 
 	if(PosOnly)
@@ -1544,6 +1597,19 @@ void CHud::RenderMovementInformation()
 		}
 
 		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+
+		if(ShowDummyInfo && g_Config.m_EcDummyShowSpeed)
+		{
+			TextRender()->Text(LeftX, y, Fontsize, "DX:", -1.0f);
+			str_format(aBuf, sizeof(aBuf), "%.2f", std::round(DummyInfo.m_Speed.x * 100.0f) / 100.0f);
+			TextRender()->Text(RightX - TextRender()->TextWidth(Fontsize, aBuf), y, Fontsize, aBuf, -1.0f);
+			y += MOVEMENT_INFORMATION_LINE_HEIGHT;
+
+			TextRender()->Text(LeftX, y, Fontsize, "DY:", -1.0f);
+			str_format(aBuf, sizeof(aBuf), "%.2f", std::round(DummyInfo.m_Speed.y * 100.0f) / 100.0f);
+			TextRender()->Text(RightX - TextRender()->TextWidth(Fontsize, aBuf), y, Fontsize, aBuf, -1.0f);
+			y += MOVEMENT_INFORMATION_LINE_HEIGHT;
+		}
 	}
 
 	if(g_Config.m_ClShowhudPlayerAngle)
@@ -1553,6 +1619,14 @@ void CHud::RenderMovementInformation()
 
 		UpdateMovementInformationTextContainer(m_PlayerAngleTextContainerIndex, Fontsize, Info.m_Angle, m_PlayerPrevAngle);
 		RenderMovementInformationTextContainer(m_PlayerAngleTextContainerIndex, TextRender()->DefaultTextColor(), RightX, y);
+		y += MOVEMENT_INFORMATION_LINE_HEIGHT;
+
+		if(ShowDummyInfo && g_Config.m_EcDummyShowAngle)
+		{
+			TextRender()->Text(LeftX, y, Fontsize, "DA:", -1.0f);
+			str_format(aBuf, sizeof(aBuf), "%.2f", std::round(DummyInfo.m_Angle * 100.0f) / 100.0f);
+			TextRender()->Text(RightX - TextRender()->TextWidth(Fontsize, aBuf), y, Fontsize, aBuf, -1.0f);
+		}
 	}
 }
 
@@ -1603,6 +1677,65 @@ void CHud::RenderSpectatorHud()
 		TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
 		TextRender()->Text(TagX + Padding + IconWidth + Padding, m_Height - 10.0f, 6.0f, pLabelText, -1.0f);
 		TextRender()->TextColor(1, 1, 1, 1);
+	}
+}
+
+void CHud::RenderSwapTimer()
+{
+	auto &vEntries = GameClient()->m_vSwapTimerEntries;
+	if(!g_Config.m_EcSwapTimer)
+	{
+		if(!vEntries.empty())
+			vEntries.clear();
+		return;
+	}
+	if(vEntries.empty())
+		return;
+
+	Ui()->MapScreen();
+	const CUIRect Screen = *Ui()->Screen();
+	const float LineSize = 12.0f;
+	const float FontSize = 8.0f;
+	const float Margin = 2.0f;
+	const float BoxWidth = Screen.w / 4.0f;
+	CUIRect Base;
+	Base.w = BoxWidth;
+	Base.h = LineSize * vEntries.size();
+	Base.x = g_Config.m_EcSwapTimerOnLeftSide ? 0.0f : (Screen.w - Base.w);
+	Base.y = (Screen.h - Base.h) * g_Config.m_EcSwapTimerPosY / 100.0f;
+
+	for(size_t i = 0; i < vEntries.size(); i++)
+	{
+		const auto &Entry = vEntries[i];
+		if(!GameClient()->m_aClients[Entry.m_FromClientId].m_Active || !GameClient()->m_aClients[Entry.m_ToClientId].m_Active)
+		{
+			GameClient()->SwapTimerRemoveAll(Entry.m_FromClientId);
+			i--;
+			continue;
+		}
+
+		const int Seconds = (Client()->GameTick(0) - Entry.m_SwapTick) / Client()->GameTickSpeed();
+		const int SwapTime = g_Config.m_SvSaveSwapGamesDelay - Seconds;
+		const int ExpTime = g_Config.m_SvSwapTimeout - Seconds;
+		if(ExpTime < 0)
+		{
+			GameClient()->SwapTimerRemove(Entry.m_FromClientId, Entry.m_ToClientId);
+			i--;
+			continue;
+		}
+
+		CUIRect Line;
+		if(i != 0)
+			Base.HSplitTop(Margin, &Base, nullptr);
+		Base.HSplitTop(LineSize, &Line, &Base);
+
+		char aBuf[128 + 2 * MAX_NAME_LENGTH];
+		if(SwapTime > 0)
+			str_format(aBuf, sizeof(aBuf), "%s → %s. In %d", GameClient()->m_aClients[Entry.m_FromClientId].m_aName, GameClient()->m_aClients[Entry.m_ToClientId].m_aName, SwapTime);
+		else
+			str_format(aBuf, sizeof(aBuf), "%s → %s. Exp %d", GameClient()->m_aClients[Entry.m_FromClientId].m_aName, GameClient()->m_aClients[Entry.m_ToClientId].m_aName, ExpTime);
+
+		Ui()->DoLabel(&Line, aBuf, FontSize, g_Config.m_EcSwapTimerOnLeftSide ? TEXTALIGN_ML : TEXTALIGN_MR);
 	}
 }
 
@@ -1724,6 +1857,7 @@ void CHud::OnRender()
 		if(g_Config.m_ClShowhudScore)
 			RenderScoreHud();
 		RenderDummyActions();
+		RenderSwapTimer();
 		RenderWarmupTimer();
 		RenderTextInfo();
 		RenderLocalTime((m_Width / 7) * 3);

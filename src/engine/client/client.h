@@ -165,6 +165,7 @@ class CClient : public IClient, public CDemoPlayer::IListener
 
 	EInfoState m_InfoState = EInfoState::ERROR;
 	std::shared_ptr<IHttpRequest> m_pDDNetInfoTask = nullptr;
+	std::shared_ptr<IHttpRequest> m_pCustomCommunitiesTask = nullptr;
 
 	// time
 	CSmoothTime m_aGameTime[NUM_DUMMIES];
@@ -399,6 +400,8 @@ public:
 	void RequestDDNetInfo() override;
 	void ResetDDNetInfoTask();
 	void LoadDDNetInfo();
+	void RequestCustomCommunities();
+	void ResetCustomCommunitiesTask();
 
 	bool IsSixup() const override { return m_Sixup; }
 

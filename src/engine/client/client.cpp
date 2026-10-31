@@ -2548,6 +2548,15 @@ void CClient::ResetDDNetInfoTask()
 	}
 }
 
+void CClient::ResetCustomCommunitiesTask()
+{
+	if(m_pCustomCommunitiesTask)
+	{
+		m_pCustomCommunitiesTask->Abort();
+		m_pCustomCommunitiesTask = nullptr;
+	}
+}
+
 typedef std::tuple<int, int, int> TVersion;
 static const TVersion gs_InvalidVersion = std::make_tuple(-1, -1, -1);
 
@@ -2961,6 +2970,11 @@ void CClient::Update()
 					// send input
 					SendInput();
 				}
+
+				if(g_Config.m_EcFastInput && GameClient()->CheckNewInput())
+				{
+					Repredict = true;
+				}
 			}
 
 			// only do sane predictions
@@ -3078,6 +3092,20 @@ void CClient::Update()
 		{
 			ResetDDNetInfoTask();
 			m_InfoState = EInfoState::ERROR;
+		}
+	}
+
+	if(m_pCustomCommunitiesTask)
+	{
+		if(m_pCustomCommunitiesTask->State() == EHttpState::DONE)
+		{
+			log_debug("client/info", "Loading custom communities");
+			LoadDDNetInfo();
+			ResetCustomCommunitiesTask();
+		}
+		else if(m_pCustomCommunitiesTask->State() == EHttpState::ERROR || m_pCustomCommunitiesTask->State() == EHttpState::ABORTED)
+		{
+			ResetCustomCommunitiesTask();
 		}
 	}
 
@@ -3314,6 +3342,7 @@ void CClient::Run()
 		g_Config.m_ClShowWelcome = 0;
 	else
 		RequestDDNetInfo();
+	RequestCustomCommunities();
 
 	if(SoundInitFailed)
 	{
@@ -5372,6 +5401,23 @@ void CClient::RequestDDNetInfo()
 	m_pDDNetInfoTask->IpResolve(IPRESOLVE::V4);
 	Http()->Run(m_pDDNetInfoTask);
 	m_InfoState = EInfoState::LOADING;
+}
+
+void CClient::RequestCustomCommunities()
+{
+	if(!g_Config.m_EcCustomCommunities)
+	{
+		return;
+	}
+	if(m_pCustomCommunitiesTask && !m_pCustomCommunitiesTask->Done())
+	{
+		return;
+	}
+
+	m_pCustomCommunitiesTask = HttpGetFile(CUSTOM_COMMUNITIES_URL, Storage(), CUSTOM_COMMUNITIES_FILE, IStorage::TYPE_SAVE);
+	m_pCustomCommunitiesTask->Timeout(CTimeout{10000, 0, 500, 10});
+	m_pCustomCommunitiesTask->SkipByFileTime(false);
+	Http()->Run(m_pCustomCommunitiesTask);
 }
 
 int CClient::GetPredictionTime()

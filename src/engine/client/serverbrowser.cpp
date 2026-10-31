@@ -1545,17 +1545,34 @@ void CServerBrowser::LoadDDNetServers()
 	m_vCommunities.clear();
 	m_CommunityServersByAddr.clear();
 
-	if(!m_pDDNetInfo)
+	if(m_pDDNetInfo)
 	{
-		return;
+		const json_value &Communities = (*m_pDDNetInfo)["communities"];
+		if(Communities.type == json_array)
+		{
+			LoadCommunities(Communities, m_pDDNetInfo);
+		}
 	}
 
-	const json_value &Communities = (*m_pDDNetInfo)["communities"];
-	if(Communities.type != json_array)
+	if(g_Config.m_EcCustomCommunities)
 	{
-		return;
+		LoadCustomCommunities();
 	}
 
+	// Add default none community
+	{
+		CCommunity NoneCommunity(COMMUNITY_NONE, "None", std::nullopt, "");
+		NoneCommunity.m_vCountries.emplace_back(COMMUNITY_COUNTRY_NONE, CountryCode::DEFAULT);
+		NoneCommunity.m_vTypes.emplace_back(COMMUNITY_TYPE_NONE);
+		m_vCommunities.push_back(std::move(NoneCommunity));
+	}
+
+	// Remove unknown elements from exclude lists
+	CleanFilters();
+}
+
+void CServerBrowser::LoadCommunities(const json_value &Communities, const json_value *pInfo)
+{
 	for(unsigned CommunityIndex = 0; CommunityIndex < Communities.u.array.length; ++CommunityIndex)
 	{
 		const json_value &Community = Communities[CommunityIndex];
@@ -1568,6 +1585,11 @@ void CServerBrowser::LoadDDNetServers()
 		if(Id.type != json_string)
 		{
 			log_error("serverbrowser", "invalid community id (CommunityIndex=%d)", (int)CommunityIndex);
+			continue;
+		}
+		const char *pCommunityId = Id.u.string.ptr;
+		if(std::any_of(m_vCommunities.begin(), m_vCommunities.end(), [pCommunityId](const CCommunity &Elem) { return str_comp(Elem.Id(), pCommunityId) == 0; }))
+		{
 			continue;
 		}
 		const json_value &Icon = Community["icon"];
@@ -1594,18 +1616,18 @@ void CServerBrowser::LoadDDNetServers()
 		{
 			if(str_comp(Id, COMMUNITY_DDNET) == 0)
 			{
-				pFinishes = &(*m_pDDNetInfo)["maps"];
+				pFinishes = &(*pInfo)["maps"];
 			}
 		}
 		if(pServers->type == json_none)
 		{
 			if(str_comp(Id, COMMUNITY_DDNET) == 0)
 			{
-				pServers = &(*m_pDDNetInfo)["servers"];
+				pServers = &(*pInfo)["servers"];
 			}
 			else if(str_comp(Id, "kog") == 0)
 			{
-				pServers = &(*m_pDDNetInfo)["servers-kog"];
+				pServers = &(*pInfo)["servers-kog"];
 			}
 		}
 		if(false ||
@@ -1648,17 +1670,41 @@ void CServerBrowser::LoadDDNetServers()
 		}
 		m_vCommunities.push_back(std::move(NewCommunity));
 	}
+}
 
-	// Add default none community
+void CServerBrowser::LoadCustomCommunities()
+{
+	void *pBuf;
+	unsigned Length;
+	if(!m_pStorage->ReadFile(CUSTOM_COMMUNITIES_FILE, IStorage::TYPE_SAVE, &pBuf, &Length))
 	{
-		CCommunity NoneCommunity(COMMUNITY_NONE, "None", std::nullopt, "");
-		NoneCommunity.m_vCountries.emplace_back(COMMUNITY_COUNTRY_NONE, CountryCode::DEFAULT);
-		NoneCommunity.m_vTypes.emplace_back(COMMUNITY_TYPE_NONE);
-		m_vCommunities.push_back(std::move(NoneCommunity));
+		return;
 	}
 
-	// Remove unknown elements from exclude lists
-	CleanFilters();
+	json_settings JsonSettings{};
+	char aError[256];
+	json_value *pJson = JsonParseEx(&JsonSettings, static_cast<json_char *>(pBuf), Length, aError);
+	free(pBuf);
+
+	if(pJson == nullptr)
+	{
+		log_error("serverbrowser", "invalid custom communities json: '%s'", aError);
+		return;
+	}
+	if(pJson->type == json_object)
+	{
+		const json_value &Communities = (*pJson)["communities"];
+		if(Communities.type == json_array)
+		{
+			LoadCommunities(Communities, pJson);
+		}
+	}
+	json_value_free(pJson);
+}
+
+void CServerBrowser::ReloadCommunities()
+{
+	LoadDDNetInfo();
 }
 
 void CServerBrowser::UpdateServerFilteredPlayers(CServerInfo *pInfo) const

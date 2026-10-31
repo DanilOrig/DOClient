@@ -20,6 +20,7 @@ class CEmoticon : public CComponent
 
 	CUi::CTouchState m_TouchState;
 	bool m_TouchPressedOutside;
+	int64_t m_OpenTime;
 
 	static void ConKeyEmoticon(IConsole::IResult *pResult, void *pUserData);
 	static void ConEmote(IConsole::IResult *pResult, void *pUserData);

@@ -144,6 +144,13 @@ protected:
 	int m_Popup;
 	bool m_ShowStart;
 	bool m_MenuActive;
+	int64_t m_SettingsPageChangeTime;
+	int m_LastSettingsPage;
+	float m_SettingsSplitY;
+	float m_SettingsViewY;
+	float m_SettingsSplitX;
+	float m_SettingsViewX;
+	bool m_WasInSettings;
 
 	bool m_DummyNamePlatePreview = false;
 
@@ -582,6 +589,10 @@ protected:
 	// found in menus_settings_ddnet.cpp
 	void RenderSettingsDDNet(CUIRect MainView);
 
+	// found in menus_settings_doclient.cpp
+	void RenderSettingsDOClient(CUIRect MainView);
+	void RegisterDOClientCommands();
+
 	// found in menus_settings_general.cpp
 	void RenderSettingsGeneral(CUIRect MainView);
 	void RenderThemeSelection(CUIRect MainView);
@@ -717,6 +728,7 @@ public:
 		SETTINGS_DDNET,
 		SETTINGS_ASSETS,
 		SETTINGS_CREDITS,
+		SETTINGS_DOCLIENT,
 
 		SETTINGS_LENGTH,
 	};

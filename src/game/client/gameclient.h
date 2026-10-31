@@ -65,6 +65,7 @@
 #include "components/skins7.h"
 #include "components/sounds.h"
 #include "components/spectator.h"
+#include "components/stt.h"
 #include "components/statboard.h"
 #include "components/touch_controls.h"
 #include "components/voting.h"
@@ -178,6 +179,7 @@ public:
 	CTouchControls m_TouchControls;
 	CVoting m_Voting;
 	CSpectator m_Spectator;
+	CStt m_Stt;
 
 	CPlayers m_Players;
 	CNamePlates m_NamePlates;
@@ -461,6 +463,7 @@ public:
 
 		char m_aName[MAX_NAME_LENGTH];
 		char m_aClan[MAX_CLAN_LENGTH];
+		char m_aClientTag[8];
 		/**
 		 * Country code in ISO 3166-1 numeric.
 		 */
@@ -719,6 +722,19 @@ public:
 	CGameWorld m_PredictedWorld;
 	CGameWorld m_PrevPredictedWorld;
 
+	// fast input
+	bool CheckNewInput() override;
+	bool GetDummyFastInput(CNetObj_PlayerInput &DummyFastInput, const CNetObj_PlayerInput *pDummyInputData, const CCharacter *pDummyChar, int LocalTee, int DummyTee) const;
+	vec2 GetFastInputPos(int ClientId);
+
+	// client type indicator
+	void UpdateClientTypesBestClient();
+	bool m_aBestClientTag[MAX_CLIENTS] = {};
+	std::shared_ptr<class IHttpRequest> m_pBestClientRequest;
+	int64_t m_BestClientNextRequest = 0;
+	char m_aBestClientServerAddress[128] = "";
+
+
 	std::vector<SSwitchers> &Switchers() { return m_GameWorld.m_Core.m_vSwitchers; }
 	std::vector<SSwitchers> &PredSwitchers() { return m_PredictedWorld.m_Core.m_vSwitchers; }
 
@@ -962,6 +978,24 @@ private:
 	int m_IsDummySwapping;
 	CCharOrder m_CharOrder;
 	int m_aSwitchStateTeam[NUM_DUMMIES];
+
+public:
+	// swap timer (based on DDNet/Rushie swap timer)
+	struct SSwapTimerEntry
+	{
+		int m_FromClientId;
+		int m_ToClientId;
+		int m_SwapTick;
+	};
+	std::vector<SSwapTimerEntry> m_vSwapTimerEntries;
+	void SwapTimerAdd(int FromClientId, int ToClientId);
+	void SwapTimerRemove(int FromClientId, int ToClientId);
+	void SwapTimerRemoveAll(int ClientId);
+
+private:
+	void SwapTimerOnMessage(int MsgId, void *pRawMsg, bool Dummy);
+	void SwapTimerRemoveSwapped(int ClientId0, int ClientId1);
+	int SwapTimerFindClientId(const char *pName) const;
 
 	void LoadMapSettings();
 	CMapBugs m_MapBugs;

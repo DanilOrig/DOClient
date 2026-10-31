@@ -52,7 +52,7 @@ MACRO_CONFIG_INT(ClNamePlatesIdsSeparateLine, cl_nameplates_ids_seperate_line, 0
 MACRO_CONFIG_INT(ClNamePlatesOffset, cl_nameplates_offset, 30, 10, 50, CFGFLAG_CLIENT | CFGFLAG_SAVE, "The size of the gap between the tee and the name plate")
 
 MACRO_CONFIG_INT(ClNamePlatesOwn, cl_nameplates_own, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show own name plate (useful for demo recording)")
-MACRO_CONFIG_INT(ClNamePlatesFriendMark, cl_nameplates_friendmark, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show friend mark (♥) in name plates")
+MACRO_CONFIG_INT(ClNamePlatesFriendMark, cl_nameplates_friendmark, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show friend mark (в™Ґ) in name plates")
 MACRO_CONFIG_INT(ClNamePlatesStrong, cl_nameplates_strong, 0, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show strong/weak in name plates (0 - off, 1 - icons, 2 - icons + numbers)")
 MACRO_CONFIG_INT(ClNamePlatesStrongSize, cl_nameplates_strong_size, 30, -50, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Size of strong/weak state icons and numbers")
 
@@ -227,7 +227,7 @@ MACRO_CONFIG_STR(ClDummy7SkinEyes, dummy7_skin_eyes, protocol7::MAX_SKIN_ARRAY_S
 // MACRO_CONFIG_STR(ClCensorUrl, cl_censor_url, 100, "https://info.ddnet.org/censor.json", CFGFLAG_CLIENT | CFGFLAG_SAVE, "URL used to download words to censor (must start with https://)")
 
 MACRO_CONFIG_INT(UiPage, ui_page, 6, 6, 13, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Interface page")
-MACRO_CONFIG_INT(UiSettingsPage, ui_settings_page, 0, 0, 10, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Interface settings page")
+MACRO_CONFIG_INT(UiSettingsPage, ui_settings_page, 0, 0, 11, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Interface settings page")
 MACRO_CONFIG_INT(UiToolboxPage, ui_toolbox_page, 0, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Toolbox page")
 MACRO_CONFIG_STR(UiServerAddress, ui_server_address, 1024, "localhost:8303", CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Interface server address")
 MACRO_CONFIG_INT(UiMousesens, ui_mousesens, 200, 1, 100000, CFGFLAG_SAVE | CFGFLAG_CLIENT, "Mouse sensitivity for menus/editor")
@@ -515,6 +515,40 @@ MACRO_CONFIG_STR(EcPassword, ec_password, 128, "", CFGFLAG_ECON, "External conso
 MACRO_CONFIG_INT(EcBantime, ec_bantime, 0, 0, 1440, CFGFLAG_ECON, "The time a client gets banned if econ authentication fails. 0 just closes the connection")
 MACRO_CONFIG_INT(EcAuthTimeout, ec_auth_timeout, 30, 1, 120, CFGFLAG_ECON, "Time in seconds before the the econ authentication times out")
 MACRO_CONFIG_INT(EcOutputLevel, ec_output_level, 0, -3, 2, CFGFLAG_ECON, "Adjusts the amount of information in the external console (-3 = none, -2 = error only, -1 = warn, 0 = info, 1 = debug, 2 = trace)")
+MACRO_CONFIG_INT(EcDummyShowPosition, ec_dummy_show_position, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show dummy position in the movement information")
+MACRO_CONFIG_INT(EcDummyShowSpeed, ec_dummy_show_speed, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show dummy speed in the movement information")
+MACRO_CONFIG_INT(EcDummyShowAngle, ec_dummy_show_angle, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show dummy target angle in the movement information")
+MACRO_CONFIG_INT(EcDummyAdvancedActions, ec_dummy_advanced_actions, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show advanced dummy actions in the dummy actions hud")
+MACRO_CONFIG_INT(EcNoCopyWeapon, ec_no_copy_weapon, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Do not copy weapon selection to the dummy when cl_dummy_copy_moves is enabled")
+MACRO_CONFIG_INT(EcFastInput, ec_fast_input, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Use the newest input for prediction before the next tick (reduced visual delay)")
+MACRO_CONFIG_INT(EcFastInputAmount, ec_fast_input_amount, 20, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "How many milliseconds fast input will apply")
+MACRO_CONFIG_INT(EcFastInputOthers, ec_fast_input_others, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Apply fast input to other tees")
+MACRO_CONFIG_INT(EcFastInputRepredictHook, ec_fast_input_repredict_hook, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Repredict fast input hook when the direction changes (requires sub-tick aiming disabled)")
+MACRO_CONFIG_INT(EcClientTypes, ec_client_types, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show the client type tag in front of player names")
+MACRO_CONFIG_INT(EcClientTypesBestClient, ec_client_types_bestclient, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Detect BestClient users through the public BestClient list")
+MACRO_CONFIG_INT(EcChatTranslate, ec_chat_translate, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Translate incoming chat messages")
+MACRO_CONFIG_STR(EcChatTranslateTarget, ec_chat_translate_target, 8, "ru", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Target language for incoming chat translation")
+MACRO_CONFIG_INT(EcChatTranslateOutgoing, ec_chat_translate_outgoing, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Translate outgoing chat messages")
+MACRO_CONFIG_STR(EcChatTranslateOutTarget, ec_chat_translate_out_target, 8, "en", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Target language for outgoing chat translation")
+MACRO_CONFIG_INT(EcChatTranslateApostrophes, ec_chat_translate_apostrophes, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Remove apostrophes from translated chat messages")
+MACRO_CONFIG_INT(EcChatTranslateShowOriginal, ec_chat_translate_show_original, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show the original message below the translated one")
+MACRO_CONFIG_INT(EcUiAnimations, ec_ui_animations, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable smooth UI animations")
+MACRO_CONFIG_INT(EcChatAnimation, ec_chat_animation, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Animate chat opening, incoming messages and typing")
+MACRO_CONFIG_INT(EcMenuAnimation, ec_menu_animation, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Animate menu opening and settings page changes")
+MACRO_CONFIG_INT(EcEmoteAnimation, ec_emote_animation, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Animate opening the emote menu")
+MACRO_CONFIG_INT(EcStt, ec_stt, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Push-to-talk offline speech recognition to chat")
+MACRO_CONFIG_STR(EcSttKey, ec_stt_key, 16, "z", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Key for push-to-talk speech recognition")
+MACRO_CONFIG_INT(EcSttLang, ec_stt_lang, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Speech recognition model (0 = Russian, 1 = English)")
+MACRO_CONFIG_INT(EcHighPriority, ec_high_priority, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Run the client process with high priority")
+MACRO_CONFIG_INT(EcDiscordLowPriority, ec_discord_low_priority, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Lower the priority of Discord processes")
+MACRO_CONFIG_INT(EcChatTranslateBackend, ec_chat_translate_backend, 0, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Chat translation backend (0 = auto, 1 = Bing, 2 = Google)")
+MACRO_CONFIG_INT(EcChatMouseSelection, ec_chat_mouse_selection, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Move the mouse cursor and select chat messages while the chat is open")
+MACRO_CONFIG_INT(EcChatHistory, ec_chat_history, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Scroll through the chat history with the mouse wheel and Page Up/Down while the chat is open")
+
+MACRO_CONFIG_INT(EcSwapTimer, ec_swap_timer, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show pending swap requests with their remaining time")
+MACRO_CONFIG_INT(EcSwapTimerOnLeftSide, ec_swap_timer_on_left_side, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show swap timer on the left side of the screen")
+MACRO_CONFIG_INT(EcSwapTimerPosY, ec_swap_timer_pos_y, 50, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Vertical position of the swap timer in percent")
+MACRO_CONFIG_INT(EcCustomCommunities, ec_custom_communities, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show the custom communities list (BestClient) in the server browser")
 
 MACRO_CONFIG_INT(Debug, debug, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SERVER, "Debug mode")
 MACRO_CONFIG_INT(DbgSql, dbg_sql, 1, 0, 1, CFGFLAG_SERVER, "Debug SQL")
@@ -795,12 +829,9 @@ MACRO_CONFIG_STR(GfxBackend, gfx_backend, 256, "Vulkan", CFGFLAG_SAVE | CFGFLAG_
 #else
 MACRO_CONFIG_STR(GfxBackend, gfx_backend, 256, "OpenGL", CFGFLAG_SAVE | CFGFLAG_CLIENT, "The backend to use (e.g. OpenGL or Vulkan)")
 #endif
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
 MACRO_CONFIG_INT(GfxRenderThreadCount, gfx_render_thread_count, 3, 0, 0, CFGFLAG_SAVE | CFGFLAG_CLIENT, "Number of threads the backend can use for rendering. (note: the value can be ignored by the backend)")
 
 MACRO_CONFIG_INT(GfxDriverIsBlocked, gfx_driver_is_blocked, 0, 0, 1, CFGFLAG_SAVE | CFGFLAG_CLIENT, "If 1, the current driver is in a blocked error state.")
 
 MACRO_CONFIG_INT(ClVideoRecorderFPS, cl_video_recorder_fps, 60, 1, 1000, CFGFLAG_SAVE | CFGFLAG_CLIENT, "At which FPS the videorecorder should record demos.")
-
-/*
- * Add config variables for mods below this comment to avoid merge conflicts.
- */

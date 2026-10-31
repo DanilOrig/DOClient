@@ -83,6 +83,7 @@ private:
 	std::deque<std::shared_ptr<CCommunityIconLoadJob>> m_CommunityIconLoadJobs;
 	std::deque<std::shared_ptr<CCommunityIconDownloadJob>> m_CommunityIconDownloadJobs;
 	std::optional<SHA256_DIGEST> m_CommunityIconsInfoSha256;
+	size_t m_NumCommunities = 0;
 	static int FileScan(const char *pName, int IsDir, int DirType, void *pUser);
 	bool LoadFile(const char *pPath, int DirType, CImageInfo &Info, CImageInfo &InfoGrayscale, SHA256_DIGEST &Sha256);
 	void LoadFinish(const char *pCommunityId, CImageInfo &Info, CImageInfo &InfoGrayscale, const SHA256_DIGEST &Sha256);

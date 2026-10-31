@@ -161,16 +161,9 @@ void CPrompt::Render()
 		if(m_PromptSelectedIndex >= 0)
 		{
 			CQuickAction *pBtn = m_vpFilteredPromptList[m_PromptSelectedIndex];
-			if(pBtn->Disabled())
-			{
-				m_ResetFilterResults = true;
-			}
-			else
-			{
-				SetInactive();
-				pBtn->Call();
-				m_pLastAction = pBtn;
-			}
+			SetInactive();
+			pBtn->Call();
+			m_pLastAction = pBtn;
 		}
 	}
 }

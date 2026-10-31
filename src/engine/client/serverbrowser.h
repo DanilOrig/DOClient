@@ -274,6 +274,8 @@ public:
 	void LoadDDNetInfoJson();
 	void LoadDDNetLocation();
 	void LoadDDNetServers();
+	void LoadCommunities(const json_value &Communities, const json_value *pInfo);
+	void LoadCustomCommunities();
 	void UpdateServerFilteredPlayers(CServerInfo *pInfo) const;
 	void UpdateServerFriends(CServerInfo *pInfo) const;
 	void UpdateServerCommunity(CServerInfo *pInfo) const;
@@ -291,6 +293,7 @@ public:
 	unsigned CurrentCommunitiesHash() const override;
 
 	bool DDNetInfoAvailable() const override { return m_pDDNetInfo != nullptr; }
+	void ReloadCommunities() override;
 	std::optional<SHA256_DIGEST> DDNetInfoSha256() const override { return m_DDNetInfoSha256; }
 
 	ICommunityCache &CommunityCache() override { return m_CommunityCache; }

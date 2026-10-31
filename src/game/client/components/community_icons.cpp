@@ -178,9 +178,14 @@ void CCommunityIcons::Update()
 	}
 
 	// Rescan for changed communities only when necessary
-	if(!ServerBrowser()->DDNetInfoAvailable() || m_CommunityIconsInfoSha256 == ServerBrowser()->DDNetInfoSha256().value())
+	if(!ServerBrowser()->DDNetInfoAvailable())
+		return;
+	const bool InfoChanged = m_CommunityIconsInfoSha256 != ServerBrowser()->DDNetInfoSha256();
+	const bool CommunitiesChanged = m_NumCommunities != ServerBrowser()->Communities().size();
+	if(!InfoChanged && !CommunitiesChanged)
 		return;
 	m_CommunityIconsInfoSha256 = ServerBrowser()->DDNetInfoSha256();
+	m_NumCommunities = ServerBrowser()->Communities().size();
 
 	// Remove icons for removed communities
 	auto RemovalIterator = m_vCommunityIcons.begin();
