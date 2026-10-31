@@ -357,6 +357,18 @@ void CStt::RecordSession()
 	char aLibPath[IO_MAX_PATH_LENGTH];
 	Storage()->GetBinaryPathAbsolute("data/stt/bin", aBinDir, sizeof(aBinDir));
 	Storage()->GetBinaryPathAbsolute("data/stt/bin/libvosk.dll", aLibPath, sizeof(aLibPath));
+	if(!fs_is_file(aLibPath))
+	{
+		// development builds do not copy data/stt next to the binary, so fall back
+		// to the storage search paths and finally to the working directory.
+		Storage()->GetCompletePath(IStorage::TYPE_ALL, "data/stt/bin/libvosk.dll", aLibPath, sizeof(aLibPath));
+		Storage()->GetCompletePath(IStorage::TYPE_ALL, "data/stt/bin", aBinDir, sizeof(aBinDir));
+	}
+	if(!fs_is_file(aLibPath))
+	{
+		str_copy(aLibPath, "data/stt/bin/libvosk.dll", sizeof(aLibPath));
+		str_copy(aBinDir, "data/stt/bin", sizeof(aBinDir));
+	}
 
 	if(gs_pModel == nullptr)
 	{
@@ -365,6 +377,10 @@ void CStt::RecordSession()
 
 		char aModelDir[IO_MAX_PATH_LENGTH];
 		Storage()->GetBinaryPathAbsolute(g_Config.m_EcSttLang == 1 ? "data/stt/vosk-model-small-en-us-0.15" : "data/stt/vosk-model-small-ru-0.22", aModelDir, sizeof(aModelDir));
+		if(!fs_is_dir(aModelDir))
+			Storage()->GetCompletePath(IStorage::TYPE_ALL, g_Config.m_EcSttLang == 1 ? "data/stt/vosk-model-small-en-us-0.15" : "data/stt/vosk-model-small-ru-0.22", aModelDir, sizeof(aModelDir));
+		if(!fs_is_dir(aModelDir))
+			str_copy(aModelDir, g_Config.m_EcSttLang == 1 ? "data/stt/vosk-model-small-en-us-0.15" : "data/stt/vosk-model-small-ru-0.22", sizeof(aModelDir));
 		if(!fs_is_dir(aModelDir))
 		{
 			log_error("stt", "Speech model not found in '%s'", aModelDir);
