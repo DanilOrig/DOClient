@@ -285,7 +285,19 @@ void CMenus::RenderSettings(CUIRect MainView)
 			View.x -= (1.0f - Eased) * MainView.w;
 			RenderPage(View);
 		}
-		else if(g_Config.m_UiSettingsPage == SETTINGS_PLAYER)
+		else if(g_Config.m_UiSettingsPage == SETTINGS_CREDITS)
+		{
+			const float VisibleHeight = MainView.h * Eased;
+			const float Slide = (1.0f - Eased) * 24.0f;
+
+			CUIRect ClipTop = MainView;
+			ClipTop.h = VisibleHeight;
+			CUIRect View = MainView;
+			View.y -= Slide;
+			Ui()->ClipEnable(&ClipTop);
+			RenderPage(View);
+			Ui()->ClipDisable();
+		}		else if(g_Config.m_UiSettingsPage == SETTINGS_PLAYER)
 		{
 			const float TopHeight = SplitY;
 			const float BottomHeight = MainView.h - SplitY;
