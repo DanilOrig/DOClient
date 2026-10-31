@@ -541,6 +541,7 @@ MACRO_CONFIG_STR(EcSttKey, ec_stt_key, 16, "z", CFGFLAG_CLIENT | CFGFLAG_SAVE, "
 MACRO_CONFIG_INT(EcSttLang, ec_stt_lang, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Speech recognition model (0 = Russian, 1 = English)")
 MACRO_CONFIG_INT(EcHighPriority, ec_high_priority, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Run the client process with high priority")
 MACRO_CONFIG_INT(EcDiscordLowPriority, ec_discord_low_priority, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Lower the priority of Discord processes")
+MACRO_CONFIG_INT(EcVisualRemoveHammerEffect, ec_visual_remove_hammer_effect, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Remove the hammer hit explosion effect")
 MACRO_CONFIG_INT(EcChatTranslateBackend, ec_chat_translate_backend, 0, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Chat translation backend (0 = auto, 1 = Bing, 2 = Google)")
 MACRO_CONFIG_INT(EcChatMouseSelection, ec_chat_mouse_selection, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Move the mouse cursor and select chat messages while the chat is open")
 MACRO_CONFIG_INT(EcChatHistory, ec_chat_history, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Scroll through the chat history with the mouse wheel and Page Up/Down while the chat is open")
