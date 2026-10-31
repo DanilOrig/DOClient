@@ -42,6 +42,24 @@ using FnResult = const char *(*)(SttRecognizer *);
 using FnFinalResult = const char *(*)(SttRecognizer *);
 using FnReset = int (*)(SttRecognizer *);
 
+// Windows APIs that take ANSI paths break on folders with non-ASCII characters
+// (e.g. "OneDrive\??????? ????"), so the library is loaded with wide strings and
+// the model path is passed as an ASCII 8.3 path.
+static bool SttUtf8ToWide(const char *pUtf8, wchar_t *pOut, int OutSize)
+{
+	return MultiByteToWideChar(CP_UTF8, 0, pUtf8, -1, pOut, OutSize) > 0;
+}
+
+static bool SttShortPath(const char *pUtf8Path, char *pOut, int OutSize)
+{
+	wchar_t aWide[IO_MAX_PATH_LENGTH];
+	if(!SttUtf8ToWide(pUtf8Path, aWide, IO_MAX_PATH_LENGTH))
+		return false;
+	wchar_t aShort[IO_MAX_PATH_LENGTH];
+	if(GetShortPathNameW(aWide, aShort, IO_MAX_PATH_LENGTH) == 0)
+		return false;
+	return WideCharToMultiByte(CP_UTF8, 0, aShort, -1, pOut, OutSize, nullptr, nullptr) > 0;
+}
 class CVosk
 {
 public:
@@ -57,10 +75,25 @@ public:
 
 	bool Load(const char *pLibPath, const char *pLibDir)
 	{
-		SetDllDirectoryA(pLibDir);
-		m_hLib = LoadLibraryA(pLibPath);
-		SetDllDirectoryA(nullptr);
+		char aShortDir[IO_MAX_PATH_LENGTH];
+		char aShortLib[IO_MAX_PATH_LENGTH];
+		if(!SttShortPath(pLibDir, aShortDir, sizeof(aShortDir)))
+			str_copy(aShortDir, pLibDir, sizeof(aShortDir));
+		if(!SttShortPath(pLibPath, aShortLib, sizeof(aShortLib)))
+			str_copy(aShortLib, pLibPath, sizeof(aShortLib));
+
+		wchar_t aWideDir[IO_MAX_PATH_LENGTH];
+		wchar_t aWideLib[IO_MAX_PATH_LENGTH];
+		if(SttUtf8ToWide(aShortDir, aWideDir, IO_MAX_PATH_LENGTH) && SttUtf8ToWide(aShortLib, aWideLib, IO_MAX_PATH_LENGTH))
+		{
+			SetDllDirectoryW(aWideDir);
+			m_hLib = LoadLibraryW(aWideLib);
+			SetDllDirectoryW(nullptr);
+		}
 		if(m_hLib == nullptr)
+			m_hLib = LoadLibraryA(pLibPath);
+		if(m_hLib == nullptr && str_comp(aShortLib, pLibPath) != 0)
+			m_hLib = LoadLibraryA(aShortLib);		if(m_hLib == nullptr)
 		{
 			log_error("stt", "Failed to load '%s'", pLibPath);
 			return false;
@@ -337,7 +370,26 @@ void CStt::RecordSession()
 			log_error("stt", "Speech model not found in '%s'", aModelDir);
 			return;
 		}
-		gs_pModel = gs_Vosk.m_pfnModelNew(aModelDir);
+		char aModelDirShort[IO_MAX_PATH_LENGTH];
+		const char *pModelDir = aModelDir;
+		if(SttShortPath(aModelDir, aModelDirShort, sizeof(aModelDirShort)))
+			pModelDir = aModelDirShort;
+		gs_pModel = gs_Vosk.m_pfnModelNew(pModelDir);
+		if(gs_pModel == nullptr && pModelDir == aModelDir)
+		{
+			// Last resort for file systems without 8.3 names: load the model
+			// relative to its own directory, which keeps the paths ASCII.
+			wchar_t aWideModel[IO_MAX_PATH_LENGTH];
+			if(SttUtf8ToWide(aModelDir, aWideModel, IO_MAX_PATH_LENGTH))
+			{
+				wchar_t aOldDir[IO_MAX_PATH_LENGTH];
+				if(GetCurrentDirectoryW(IO_MAX_PATH_LENGTH, aOldDir) > 0 && SetCurrentDirectoryW(aWideModel))
+				{
+					gs_pModel = gs_Vosk.m_pfnModelNew(".");
+					SetCurrentDirectoryW(aOldDir);
+				}
+			}
+		}
 		if(gs_pModel == nullptr)
 		{
 			log_error("stt", "Failed to load speech model '%s'", aModelDir);
