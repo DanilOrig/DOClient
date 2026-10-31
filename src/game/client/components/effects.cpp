@@ -393,6 +393,13 @@ void CEffects::Explosion(vec2 Pos, float Alpha)
 
 void CEffects::HammerHit(vec2 Pos, float Alpha, float Volume)
 {
+	if(g_Config.m_EcVisualRemoveHammerEffect)
+	{
+		if(g_Config.m_SndGame)
+			GameClient()->m_Sounds.PlayAt(CSounds::CHN_WORLD, SOUND_HAMMER_HIT, Volume, Pos);
+		return;
+	}
+
 	// add the explosion
 	CParticle p;
 	p.SetDefault();
