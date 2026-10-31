@@ -151,6 +151,7 @@ void CMenus::RegisterDOClientCommands()
 	Console()->Register("ec_toggle_stt", "", CFGFLAG_CLIENT, ConToggleConfig, &g_Config.m_EcStt, "Toggle push-to-talk speech recognition to chat");
 
 	Console()->Register("ec_toggle_high_priority", "", CFGFLAG_CLIENT, ConToggleHighPriority, GameClient(), "Toggle high priority for the client process");
+	Console()->Register("ec_toggle_visual_remove_hammer_effect", "", CFGFLAG_CLIENT, ConToggleConfig, &g_Config.m_EcVisualRemoveHammerEffect, "Toggle removing the hammer hit explosion effect");
 
 	Console()->Register("ec_toggle_discord_low_priority", "", CFGFLAG_CLIENT, ConToggleDiscordLowPriority, GameClient(), "Toggle lowering the priority of Discord processes");
 
@@ -209,6 +210,7 @@ void CMenus::RenderSettingsDOClient(CUIRect MainView)
 	const int AnimRows = 4;
 
 	const int PerfRows = 2;
+	const int VisualRows = 1;
 
 	int InputRows = 2;
 
@@ -238,7 +240,7 @@ void CMenus::RenderSettingsDOClient(CUIRect MainView)
 
 
 
-	CUIRect DummyCard, SwapCard, ChatCard, AnimCard, PerfCard, InputCard, ClientCard, TranslateCard, VoiceCard;
+	CUIRect DummyCard, SwapCard, ChatCard, AnimCard, PerfCard, VisualCard, InputCard, ClientCard, TranslateCard, VoiceCard;
 
 	LeftColumn.HSplitTop(CardHeight(DummyRows), &DummyCard, &LeftColumn);
 
@@ -273,6 +275,8 @@ void CMenus::RenderSettingsDOClient(CUIRect MainView)
 	RightColumn.HSplitTop(12.0f, nullptr, &RightColumn);
 
 	RightColumn.HSplitTop(CardHeight(VoiceRows), &VoiceCard, &RightColumn);
+	RightColumn.HSplitTop(12.0f, nullptr, &RightColumn);
+	RightColumn.HSplitTop(CardHeight(VisualRows), &VisualCard, &RightColumn);
 
 
 
@@ -399,6 +403,10 @@ void CMenus::RenderSettingsDOClient(CUIRect MainView)
 	if(DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcDiscordLowPriority, "Понизить приоритет процесса Discord", &g_Config.m_EcDiscordLowPriority, &Column, 20.0f))
 
 		ApplyPerformanceSettings();
+
+
+	Column = DrawCard(VisualCard, "Визуал");
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcVisualRemoveHammerEffect, "Убрать эффект хаммера", &g_Config.m_EcVisualRemoveHammerEffect, &Column, 20.0f);
 
 	Column = DrawCard(InputCard, "Ввод");
 
