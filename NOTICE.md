@@ -25,8 +25,7 @@
 
 - **DDNet** — <https://github.com/ddnet/ddnet> — база клиента (лицензия в `license.txt`).
 - **BestClient** — <https://github.com/BestProjectTeam/BestClient> — список сообществ в
-  браузере серверов, теги клиентов и определение BestClient по списку, индикатор позиции/
-  скорости/угла дамми, настройки приоритета процессов (DDNet/Discord).
+  браузере серверов и определение BestClient по публичному списку (метки BC).
 - **TaterClient / TClient** — <https://github.com/TaterClient/TClient> — формат списка
   сообществ (`TaterClient/ddnet-custom-communities`), эмодзи в чате и шрифт
   `NotoEmoji-Regular.ttf` (SIL Open Font License 1.1), Fast Input.
@@ -38,8 +37,9 @@
 - **Entity Client** — <https://github.com/FoxNet-DDNet/Entity-Client-DDNet> — референс
   настроек производительности, проверка отображения эмодзи в чате.
 
-Остальные функции (выделение и история чата, анимации интерфейса, офлайн-распознавание
-речи, перенос настроек в карточки DOClient) написаны в этом форке.
+Остальные функции написаны в этом форке: выделение и история чата, анимации интерфейса,
+индикатор позиции/скорости/угла дамми, приоритеты процессов (DDNet/Discord),
+метка клиента DO, офлайн-распознавание речи (в v1.0) и перенос настроек в карточки DOClient.
 
 ## Сторонние компоненты / third-party
 
