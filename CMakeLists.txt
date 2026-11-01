@@ -2744,8 +2744,6 @@ if(CLIENT)
     components/spectator.h
     components/statboard.cpp
     components/statboard.h
-    components/stt.cpp
-    components/stt.h
     components/touch_controls.cpp
     components/touch_controls.h
     components/voting.cpp
