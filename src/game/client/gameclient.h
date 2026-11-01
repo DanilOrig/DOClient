@@ -65,7 +65,6 @@
 #include "components/skins7.h"
 #include "components/sounds.h"
 #include "components/spectator.h"
-#include "components/stt.h"
 #include "components/statboard.h"
 #include "components/touch_controls.h"
 #include "components/voting.h"
@@ -179,7 +178,6 @@ public:
 	CTouchControls m_TouchControls;
 	CVoting m_Voting;
 	CSpectator m_Spectator;
-	CStt m_Stt;
 
 	CPlayers m_Players;
 	CNamePlates m_NamePlates;
