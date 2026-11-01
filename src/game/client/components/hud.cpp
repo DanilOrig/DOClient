@@ -1312,7 +1312,7 @@ void CHud::RenderSpectatorCount()
 
 	if(g_Config.m_ClShowhudDummyActions && !(GameClient()->m_Snap.m_pGameInfoObj->m_GameStateFlags & GAMESTATEFLAG_GAMEOVER) && Client()->DummyConnected())
 	{
-		const float DummyActionsHeight = 13.0f * 2 + 3.0f + (g_Config.m_EcDummyAdvancedActions ? 13.0f : 0.0f);
+		const float DummyActionsHeight = 13.0f * 2 + 3.0f + (g_Config.m_EcDummyAdvancedActions ? 13.0f * 2.0f : 0.0f);
 		StartY = StartY - DummyActionsHeight - 4; // dummy actions height and padding
 	}
 
@@ -1334,7 +1334,7 @@ void CHud::RenderDummyActions()
 		return;
 	}
 	// render small dummy actions hud
-	const float BoxHeight = 13.0f * 2 + 3.0f + (g_Config.m_EcDummyAdvancedActions ? 13.0f : 0.0f);
+	const float BoxHeight = 13.0f * 2 + 3.0f + (g_Config.m_EcDummyAdvancedActions ? 13.0f * 2.0f : 0.0f);
 	const float BoxWidth = 16.0f;
 
 	float StartX = m_Width - BoxWidth;
@@ -1375,6 +1375,10 @@ void CHud::RenderDummyActions()
 
 	y += 13;
 	TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
+	TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
+	TextRender()->TextColor(1.0f, 1.0f, 1.0f, g_Config.m_EcNoCopyWeapon ? 1.0f : 0.4f);
+	TextRender()->Text(x, y + 2.0f, 9.0f, FontIcon::BAN, -1.0f);
+	y += 13;
 	TextRender()->TextColor(1.0f, 1.0f, 1.0f, g_Config.m_ClDummyControl ? 1.0f : 0.4f);
 	TextRender()->Text(x, y + 2.0f, 9.0f, FontIcon::KEYBOARD, -1.0f);
 	TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
