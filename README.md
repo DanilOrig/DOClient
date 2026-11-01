@@ -52,3 +52,13 @@ cmake --build build --config Release --target game-client
 - Это изменённый форк: список изменений и требование об обозначении — `NOTICE.md`.
 - Vosk (Alpha Cephei) — Apache-2.0; MinGW-w64 runtime — GCC Runtime Library Exception.
 - Ассеты, шрифты, языки и скины в `data/` — собственные лицензии (см. `license.txt`).
+## Откуда взяты функции
+
+- **DDNet** — база клиента.
+- **BestClient** — сообщества в браузере, теги клиентов, индикатор позиции/скорости/угла дамми, приоритет процессов.
+- **TaterClient / TClient** — формат списка сообществ, эмодзи в чате (шрифт Noto Emoji, OFL 1.1), Fast Input.
+- **Rushie Client** — перевод чата (Bing/Google), показ оригинала, «убрать эффект хаммера».
+- **Pulse Client** — свечение лазеров и вкладка настроек лазера с превью.
+- **Entity Client** — референс настроек производительности.
+
+Подробнее — в [NOTICE.md](NOTICE.md).
