@@ -367,25 +367,52 @@ void CItems::RenderLaser(vec2 From, vec2 Pos, ColorRGBA OuterColor, ColorRGBA In
 		Graphics()->TextureClear();
 		Graphics()->QuadsBegin();
 
-		// do outline
-		Graphics()->SetColor(OuterColor);
-		vec2 Out = vec2(Dir.y, -Dir.x) * (7.0f * Ia);
+		if(g_Config.m_EcLaserGlow && g_Config.m_EcLaserGlowIntensity > 0)
+		{
+			const float Glow = g_Config.m_EcLaserGlowIntensity / 100.0f;
+			constexpr int NumLayers = 13;
+			static const float s_aAlphas[NumLayers] = {0.02f, 0.03f, 0.04f, 0.05f, 0.06f, 0.08f, 0.10f, 0.15f, 0.25f, 0.45f, 0.65f, 0.85f, 1.0f};
+			static const float s_aWidths[NumLayers] = {24.0f, 22.0f, 20.0f, 18.0f, 16.0f, 14.0f, 12.0f, 10.0f, 8.0f, 6.0f, 4.0f, 3.0f, 2.0f};
 
-		IGraphics::CFreeformItem Freeform(
-			From - Out, From + Out,
-			Pos - Out, Pos + Out);
-		Graphics()->QuadsDrawFreeform(&Freeform, 1);
+			for(int i = 0; i < NumLayers; ++i)
+			{
+				const float Alpha = s_aAlphas[i] * Glow;
+				const float Offset = s_aWidths[i] * Ia * Glow;
+				const vec2 Out = vec2(Dir.y, -Dir.x) * Offset;
 
-		// do inner
-		Out = vec2(Dir.y, -Dir.x) * (5.0f * Ia);
-		vec2 ExtraOutlinePos = Dir;
-		vec2 ExtraOutlineFrom = Type == LASERTYPE_DOOR ? vec2(0, 0) : Dir;
-		Graphics()->SetColor(InnerColor); // center
+				const ColorRGBA Color = (i == NumLayers - 1) ? ColorRGBA(1.0f, 1.0f, 1.0f, Alpha) : (i >= NumLayers - 2 ? InnerColor.WithMultipliedAlpha(Alpha) : OuterColor.WithMultipliedAlpha(Alpha));
 
-		Freeform = IGraphics::CFreeformItem(
-			From - Out + ExtraOutlineFrom, From + Out + ExtraOutlineFrom,
-			Pos - Out - ExtraOutlinePos, Pos + Out - ExtraOutlinePos);
-		Graphics()->QuadsDrawFreeform(&Freeform, 1);
+				Graphics()->SetColor(Color);
+				IGraphics::CFreeformItem Freeform(
+					From.x - Out.x, From.y - Out.y,
+					From.x + Out.x, From.y + Out.y,
+					Pos.x - Out.x, Pos.y - Out.y,
+					Pos.x + Out.x, Pos.y + Out.y);
+				Graphics()->QuadsDrawFreeform(&Freeform, 1);
+			}
+		}
+		else
+		{
+			// do outline
+			Graphics()->SetColor(OuterColor);
+			vec2 Out = vec2(Dir.y, -Dir.x) * (7.0f * Ia);
+
+			IGraphics::CFreeformItem Freeform(
+				From - Out, From + Out,
+				Pos - Out, Pos + Out);
+			Graphics()->QuadsDrawFreeform(&Freeform, 1);
+
+			// do inner
+			Out = vec2(Dir.y, -Dir.x) * (5.0f * Ia);
+			vec2 ExtraOutlinePos = Dir;
+			vec2 ExtraOutlineFrom = Type == LASERTYPE_DOOR ? vec2(0, 0) : Dir;
+			Graphics()->SetColor(InnerColor); // center
+
+			Freeform = IGraphics::CFreeformItem(
+				From - Out + ExtraOutlineFrom, From + Out + ExtraOutlineFrom,
+				Pos - Out - ExtraOutlinePos, Pos + Out - ExtraOutlinePos);
+			Graphics()->QuadsDrawFreeform(&Freeform, 1);
+		}
 
 		Graphics()->QuadsEnd();
 	}
@@ -445,10 +472,25 @@ void CItems::RenderLaser(vec2 From, vec2 Pos, ColorRGBA OuterColor, ColorRGBA In
 		int CurParticle = (int)TicksHead % 3;
 		Graphics()->TextureSet(GameClient()->m_ParticlesSkin.m_aSpriteParticleSplat[CurParticle]);
 		Graphics()->QuadsSetRotation((int)TicksHead);
-		Graphics()->SetColor(OuterColor);
-		Graphics()->RenderQuadContainerAsSprite(m_ItemsQuadContainerIndex, m_aParticleSplatOffset[CurParticle], Pos.x, Pos.y);
-		Graphics()->SetColor(InnerColor);
-		Graphics()->RenderQuadContainerAsSprite(m_ItemsQuadContainerIndex, m_aParticleSplatOffset[CurParticle], Pos.x, Pos.y, 20.f / 24.f, 20.f / 24.f);
+		if(g_Config.m_EcLaserGlow && g_Config.m_EcLaserGlowIntensity > 0)
+		{
+			const float Glow = g_Config.m_EcLaserGlowIntensity / 100.0f;
+			static const float s_aScales[5] = {1.8f, 1.5f, 1.2f, 0.9f, 0.6f};
+			static const float s_aAlphas[5] = {0.15f, 0.25f, 0.45f, 0.65f, 1.0f};
+			for(int i = 0; i < 5; ++i)
+			{
+				const ColorRGBA Color = i == 4 ? ColorRGBA(1.0f, 1.0f, 1.0f, s_aAlphas[i] * Glow) : (i >= 3 ? InnerColor.WithMultipliedAlpha(s_aAlphas[i] * Glow) : OuterColor.WithMultipliedAlpha(s_aAlphas[i] * Glow));
+				Graphics()->SetColor(Color);
+				Graphics()->RenderQuadContainerAsSprite(m_ItemsQuadContainerIndex, m_aParticleSplatOffset[CurParticle], Pos.x, Pos.y, s_aScales[i], s_aScales[i]);
+			}
+		}
+		else
+		{
+			Graphics()->SetColor(OuterColor);
+			Graphics()->RenderQuadContainerAsSprite(m_ItemsQuadContainerIndex, m_aParticleSplatOffset[CurParticle], Pos.x, Pos.y);
+			Graphics()->SetColor(InnerColor);
+			Graphics()->RenderQuadContainerAsSprite(m_ItemsQuadContainerIndex, m_aParticleSplatOffset[CurParticle], Pos.x, Pos.y, 20.f / 24.f, 20.f / 24.f);
+		}
 	}
 }
 
