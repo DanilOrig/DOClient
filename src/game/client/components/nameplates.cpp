@@ -47,6 +47,8 @@ public:
 	EHookStrongWeakState m_HookStrongWeakState;
 	bool m_ShowHookStrongWeakId;
 	int m_HookStrongWeakId;
+	bool m_ShowClientTag;
+	char m_aClientTag[16];
 	float m_FontSizeHookStrongWeak;
 };
 
@@ -194,6 +196,82 @@ public:
 		This.Graphics()->QuadsSetRotation(0.0f);
 	}
 };
+
+static IGraphics::CTextureHandle NamePlateTagTexture(IGraphics *pGraphics, const char *pTag)
+{
+	static IGraphics::CTextureHandle s_DoTagTexture;
+	static IGraphics::CTextureHandle s_RcTagTexture;
+	static IGraphics::CTextureHandle s_BcTagTexture;
+	static IGraphics::CTextureHandle s_EcTagTexture;
+	static IGraphics::CTextureHandle s_DdTagTexture;
+	if(str_comp(pTag, "[DO]") == 0)
+	{
+		if(!s_DoTagTexture.IsValid())
+			s_DoTagTexture = pGraphics->LoadTexture("clienttags/do.png", IStorage::TYPE_ALL);
+		return s_DoTagTexture;
+	}
+	if(str_comp(pTag, "[RC]") == 0)
+	{
+		if(!s_RcTagTexture.IsValid())
+			s_RcTagTexture = pGraphics->LoadTexture("clienttags/rc.png", IStorage::TYPE_ALL);
+		return s_RcTagTexture;
+	}
+	if(str_comp(pTag, "[BC]") == 0)
+	{
+		if(!s_BcTagTexture.IsValid())
+			s_BcTagTexture = pGraphics->LoadTexture("clienttags/bc.png", IStorage::TYPE_ALL);
+		return s_BcTagTexture;
+	}
+	if(str_comp(pTag, "[EC]") == 0)
+	{
+		if(!s_EcTagTexture.IsValid())
+			s_EcTagTexture = pGraphics->LoadTexture("clienttags/ec.png", IStorage::TYPE_ALL);
+		return s_EcTagTexture;
+	}
+	if(str_comp(pTag, "[DD]") == 0)
+	{
+		if(!s_DdTagTexture.IsValid())
+			s_DdTagTexture = pGraphics->LoadTexture("clienttags/dd.png", IStorage::TYPE_ALL);
+		return s_DdTagTexture;
+	}
+	return IGraphics::CTextureHandle();
+}
+
+class CNamePlatePartClientTag : public CNamePlatePartIcon
+{
+private:
+	char m_aTag[16] = "";
+	float m_FontSize = -INFINITY;
+
+public:
+	CNamePlatePartClientTag(CGameClient &This) :
+		CNamePlatePartIcon(This) {}
+
+	void Update(CGameClient &This, const CNamePlateData &Data) override
+	{
+		m_Visible = Data.m_ShowClientTag && Data.m_aClientTag[0] != '\0';
+		if(!m_Visible)
+			return;
+		if(m_FontSize != Data.m_FontSize || str_comp(m_aTag, Data.m_aClientTag) != 0)
+		{
+			m_FontSize = Data.m_FontSize;
+			m_Size = vec2(Data.m_FontSize, Data.m_FontSize);
+			m_Padding = vec2(3.0f, Data.m_FontSize / 2.0f);
+		}
+		if(str_comp(m_aTag, Data.m_aClientTag) != 0)
+		{
+			str_copy(m_aTag, Data.m_aClientTag);
+			m_Texture = NamePlateTagTexture(This.Graphics(), m_aTag);
+		}
+		if(!m_Texture.IsValid())
+		{
+			m_Visible = false;
+			return;
+		}
+		m_Color = ColorRGBA(1.0f, 1.0f, 1.0f, Data.m_Color.a);
+	}
+};
+
 
 // Part Definitions
 
@@ -518,6 +596,7 @@ private:
 
 		AddPart<CNamePlatePartFriendMark>(This);
 		AddPart<CNamePlatePartClientId>(This, false);
+		AddPart<CNamePlatePartClientTag>(This);
 		AddPart<CNamePlatePartName>(This);
 		AddPart<CNamePlatePartNewLine>(This);
 
@@ -652,6 +731,8 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 	Data.m_FontSizeClientId = Data.m_ClientIdSeparateLine ? (18.0f + 20.0f * g_Config.m_ClNamePlatesIdsSize / 100.0f) : Data.m_FontSize;
 
 	Data.m_ShowClan = Data.m_ShowName && g_Config.m_ClNamePlatesClan;
+	Data.m_ShowClientTag = g_Config.m_EcClientTypesNamePlates;
+	str_copy(Data.m_aClientTag, GameClient()->m_aClients[pPlayerInfo->m_ClientId].m_aClientTag);
 	str_copy(Data.m_aClan, GameClient()->m_aClients[pPlayerInfo->m_ClientId].m_aClan);
 	Data.m_FontSizeClan = 18.0f + 20.0f * g_Config.m_ClNamePlatesClanSize / 100.0f;
 
@@ -799,6 +880,10 @@ void CNamePlates::RenderNamePlatePreview(vec2 Position, int Dummy)
 	Data.m_FontSizeClientId = Data.m_ClientIdSeparateLine ? (18.0f + 20.0f * g_Config.m_ClNamePlatesIdsSize / 100.0f) : Data.m_FontSize;
 
 	Data.m_ShowClan = Data.m_ShowName && g_Config.m_ClNamePlatesClan;
+	Data.m_ShowClientTag = g_Config.m_EcClientTypesNamePlates;
+	const int LocalId = GameClient()->m_aLocalIds[Dummy];
+	if(LocalId >= 0)
+		str_copy(Data.m_aClientTag, GameClient()->m_aClients[LocalId].m_aClientTag);
 	const char *pClan = Dummy == 0 ? g_Config.m_PlayerClan : g_Config.m_ClDummyClan;
 	str_copy(Data.m_aClan, str_utf8_skip_whitespaces(pClan));
 	str_utf8_trim_right(Data.m_aClan);
