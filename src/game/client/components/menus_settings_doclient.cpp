@@ -115,7 +115,7 @@ void CMenus::RenderDOClientSettings(CUIRect MainView)
 		if(!g_Config.m_ClSubTickAiming)
 			InputRows += 1;
 	}
-	const int ClientRows = 4;
+	const int ClientRows = 5;
 	const int TranslateRows = 5;
 
 	// card height: top padding + heading + rows + bottom padding
@@ -281,6 +281,7 @@ void CMenus::RenderDOClientSettings(CUIRect MainView)
 
 	Column = DrawCard(ClientCard, "Клиенты");
 	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcClientTypes, "Показывать теги клиентов", &g_Config.m_EcClientTypes, &Column, 20.0f);
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcClientTypesNamePlates, "Теги клиентов в нейм-плейтах", &g_Config.m_EcClientTypesNamePlates, &Column, 20.0f);
 	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcClientTypesBestClient, "Определять BestClient по списку", &g_Config.m_EcClientTypesBestClient, &Column, 20.0f);
 	if(DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcCustomCommunities, "Сообщества BestClient", &g_Config.m_EcCustomCommunities, &Column, 20.0f))
 		ServerBrowser()->ReloadCommunities();
