@@ -965,6 +965,10 @@ void CChat::StoreSave(const char *pText)
 
 void CChat::AddLine(int ClientId, int Team, const char *pLine)
 {
+	// do not show messages of muted players
+	if(ClientId >= 0 && GameClient()->m_WarList.IsMuted(ClientId))
+		return;
+
 	if(*pLine == 0 ||
 		(ClientId == SERVER_MSG && !g_Config.m_ClShowChatSystem) ||
 		(ClientId >= 0 && (GameClient()->m_aClients[ClientId].m_aName[0] == '\0' || // unknown client
@@ -1126,6 +1130,8 @@ void CChat::AddLine(int ClientId, int Team, const char *pLine)
 
 		if(LineAuthor.m_Active)
 		{
+			if(g_Config.m_EcWarListColorsChat && GameClient()->m_WarList.IsWar(CurrentLine.m_ClientId))
+				CurrentLine.m_NameColor = color_cast<ColorHSLA>(GameClient()->m_WarList.ColorForClient(CurrentLine.m_ClientId)).Pack(false);
 			if(LineAuthor.m_Team == TEAM_SPECTATORS)
 				CurrentLine.m_NameColor = TEAM_SPECTATORS;
 
@@ -2224,6 +2230,10 @@ void CChat::UpdateChatTranslation()
 
 void CChat::SendChat(int Team, const char *pLine)
 {
+	// client side war list commands: !war, !team, !mute, !unmute
+	if(GameClient()->m_WarList.HandleChatCommand(pLine))
+		return;
+
 	// don't send empty messages
 	if(*str_utf8_skip_whitespaces(pLine) == '\0')
 		return;
