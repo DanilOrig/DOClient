@@ -44,6 +44,7 @@
 #include "components/flow.h"
 #include "components/freezebars.h"
 #include "components/ghost.h"
+#include "components/gradient.h"
 #include "components/hud.h"
 #include "components/important_alert.h"
 #include "components/infomessages.h"
@@ -173,6 +174,7 @@ public:
 	CEffects m_Effects;
 	CScoreboard m_Scoreboard;
 	CWarList m_WarList;
+	CGradient m_Gradient;
 	CStatboard m_Statboard;
 	CSounds m_Sounds;
 	CEmoticon m_Emoticon;
@@ -728,6 +730,7 @@ public:
 	vec2 GetFastInputPos(int ClientId);
 
 	// client type indicator
+	static void ConClientDump(IConsole::IResult *pResult, void *pUserData);
 	void UpdateClientTypesBestClient();
 	bool m_aBestClientTag[MAX_CLIENTS] = {};
 	std::shared_ptr<class IHttpRequest> m_pBestClientRequest;
