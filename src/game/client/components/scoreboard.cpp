@@ -991,6 +991,8 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				}
 				if(g_Config.m_EcWarListColorsTab && GameClient()->m_WarList.IsWar(pInfo->m_ClientId))
 					NameColor = GameClient()->m_WarList.ColorForClient(pInfo->m_ClientId).WithAlpha(TextColor.a);
+				if(GameClient()->m_Gradient.NamesEnabled() && GameClient()->m_Gradient.AppliesTo(pInfo->m_ClientId))
+					NameColor = GameClient()->m_Gradient.ColorFor(pInfo->m_ClientId).WithAlpha(TextColor.a);
 				Player.m_Name.Render(TextRender(), vec2(NameOffset + TagWidth, TextY), NameColor);
 				if(g_Config.m_EcWarListShowReason && GameClient()->m_WarList.IsWar(pInfo->m_ClientId) && GameClient()->m_WarList.ReasonForClient(pInfo->m_ClientId)[0] != '\0')
 				{
@@ -1019,6 +1021,9 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				{
 					ClanColor = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClSameClanColor));
 				}
+				if(GameClient()->m_Gradient.ClansEnabled() && GameClient()->m_Gradient.AppliesTo(pInfo->m_ClientId))
+					ClanColor = GameClient()->m_Gradient.ColorFor(pInfo->m_ClientId).WithAlpha(TextColor.a);
+
 				Player.m_Clan.Update(TextRender(), ClientData.m_aClan, FontSize, ClanLength, TEXTFLAG_RENDER | TEXTFLAG_ELLIPSIS_AT_END);
 				Player.m_Clan.Render(TextRender(), vec2(ClanOffset + (ClanLength - std::min(Player.m_Clan.Width(), ClanLength)) / 2.0f, TextY), ClanColor);
 			}
