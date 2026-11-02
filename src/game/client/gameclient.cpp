@@ -114,6 +114,8 @@ void CGameClient::OnConsoleInit()
 	m_pStorage = Kernel()->RequestInterface<IStorage>();
 	m_pDemoPlayer = Kernel()->RequestInterface<IDemoPlayer>();
 	m_pServerBrowser = Kernel()->RequestInterface<IServerBrowser>();
+
+	Console()->Register("client_dump", "?i[client_id] ?s[name]", CFGFLAG_CLIENT, ConClientDump, this, "Dump raw client info (colors/tags) for all clients or one client");
 	m_pEditor = Kernel()->RequestInterface<IEditor>();
 	m_pFavorites = Kernel()->RequestInterface<IFavorites>();
 	m_pFriends = Kernel()->RequestInterface<IFriends>();
@@ -166,6 +168,7 @@ void CGameClient::OnConsoleInit()
 					      &m_TouchControls,
 					      &m_Scoreboard,
 					      &m_WarList,
+					      &m_Gradient,
 					      &m_Statboard,
 					      &m_Motd,
 					      &m_Menus,
@@ -4908,3 +4911,24 @@ void CGameClient::StoreSave(const char *pTeamMembers, const char *pGeneratedCode
 	CsvWrite(File, std::size(SAVES_HEADER), apColumns);
 	io_close(File);
 }
+
+void CGameClient::ConClientDump(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameClient *pThis = (CGameClient *)pUserData;
+	const int FilterId = pResult->NumArguments() > 0 ? pResult->GetInteger(0) : -1;
+	const char *pFilterName = pResult->NumArguments() > 1 ? pResult->GetString(1) : "";
+	char aBuf[256];
+	for(int ClientId = 0; ClientId < MAX_CLIENTS; ClientId++)
+	{
+		const auto &Client = pThis->m_aClients[ClientId];
+		if(Client.m_aName[0] == '\0')
+			continue;
+		if(FilterId >= 0 && ClientId != FilterId)
+			continue;
+		if(pFilterName[0] != '\0' && str_find_nocase(Client.m_aName, pFilterName) == nullptr)
+			continue;
+		str_format(aBuf, sizeof(aBuf), "id=%d name='%s' clan='%s' tag='%s' body=%08x feet=%08x custom=%d country=%d", ClientId, Client.m_aName, Client.m_aClan, Client.m_aClientTag, (unsigned)Client.m_ColorBody, (unsigned)Client.m_ColorFeet, Client.m_UseCustomColor, Client.m_Country);
+		pThis->Echo(aBuf);
+	}
+}
+
