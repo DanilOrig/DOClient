@@ -1132,6 +1132,7 @@ void CChat::AddLine(int ClientId, int Team, const char *pLine)
 		{
 			if(g_Config.m_EcWarListColorsChat && GameClient()->m_WarList.IsWar(CurrentLine.m_ClientId))
 				CurrentLine.m_NameColor = color_cast<ColorHSLA>(GameClient()->m_WarList.ColorForClient(CurrentLine.m_ClientId)).Pack(false);
+
 			if(LineAuthor.m_Team == TEAM_SPECTATORS)
 				CurrentLine.m_NameColor = TEAM_SPECTATORS;
 
@@ -1143,6 +1144,9 @@ void CChat::AddLine(int ClientId, int Team, const char *pLine)
 					CurrentLine.m_NameColor = TEAM_BLUE;
 			}
 		}
+
+		if(GameClient()->m_Gradient.NamesEnabled() && GameClient()->m_Gradient.AppliesTo(CurrentLine.m_ClientId) && Team != TEAM_WHISPER_SEND && Team != TEAM_WHISPER_RECV)
+			CurrentLine.m_NameColor = color_cast<ColorHSLA>(GameClient()->m_Gradient.ColorFor(CurrentLine.m_ClientId)).Pack(false);
 
 		if(Team == TEAM_WHISPER_SEND)
 		{
