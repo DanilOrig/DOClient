@@ -68,6 +68,7 @@
 #include "components/statboard.h"
 #include "components/touch_controls.h"
 #include "components/voting.h"
+#include "components/warlist.h"
 
 #include <memory>
 #include <vector>
@@ -171,6 +172,7 @@ public:
 	CControls m_Controls;
 	CEffects m_Effects;
 	CScoreboard m_Scoreboard;
+	CWarList m_WarList;
 	CStatboard m_Statboard;
 	CSounds m_Sounds;
 	CEmoticon m_Emoticon;
