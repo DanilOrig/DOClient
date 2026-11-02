@@ -525,7 +525,15 @@ static IGraphics::CTextureHandle *ClientTagTexture(IGraphics *pGraphics, const c
 	static IGraphics::CTextureHandle s_RcTagTexture;
 	static IGraphics::CTextureHandle s_BcTagTexture;
 	static IGraphics::CTextureHandle s_EcTagTexture;
+	static IGraphics::CTextureHandle s_DoTagTexture;
 	static IGraphics::CTextureHandle s_DdTagTexture;
+	if(str_comp(pTag, "[DO]") == 0)
+	{
+		if(!s_DoTagTexture.IsValid())
+			s_DoTagTexture = pGraphics->LoadTexture("clienttags/do.png", IStorage::TYPE_ALL);
+		return &s_DoTagTexture;
+	}
+
 	if(str_comp(pTag, "[DD]") == 0)
 	{
 		if(!s_DdTagTexture.IsValid())
@@ -957,11 +965,12 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 						Graphics()->TextureSet(*pTagTexture);
 						Graphics()->QuadsBegin();
 						Graphics()->SetColor(1.0f, 1.0f, 1.0f, TextColor.a);
-						IGraphics::CQuadItem Quad(NameOffset, TextY, FontSize, FontSize);
+						const float TagY = Row.y + (Row.h - FontSize) / 2.0f;
+						IGraphics::CQuadItem Quad(NameOffset + 7.0f, TagY, FontSize, FontSize);
 						Graphics()->QuadsDrawTL(&Quad, 1);
 						Graphics()->QuadsEnd();
 						Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
-						TagWidth = FontSize + 2.0f;
+						TagWidth = FontSize + 11.0f;
 					}
 					else
 					{
