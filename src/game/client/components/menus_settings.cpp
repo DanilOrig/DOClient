@@ -55,29 +55,55 @@ void CMenus::RenderSettings(CUIRect MainView)
 		Localize("Assets"),
 		Localize("Credits"),
 		"DOClient"};
-	static const int s_aTabOrder[SETTINGS_LENGTH] = {
-		SETTINGS_LANGUAGE,
+	constexpr int NUM_VISIBLE_TABS = SETTINGS_LENGTH - 1;
+	static const int s_aTabOrder[NUM_VISIBLE_TABS] = {
 		SETTINGS_GENERAL,
 		SETTINGS_PLAYER,
 		SETTINGS_TEE,
 		SETTINGS_APPEARANCE,
 		SETTINGS_CONTROLS,
 		SETTINGS_GRAPHICS,
-		SETTINGS_DOCLIENT,
 		SETTINGS_SOUND,
+		SETTINGS_DOCLIENT,
 		SETTINGS_DDNET,
 		SETTINGS_ASSETS,
 		SETTINGS_CREDITS};
 	static CButtonContainer s_aTabButtons[SETTINGS_LENGTH];
 
-	for(int i = 0; i < SETTINGS_LENGTH; i++)
+	for(int i = 0; i < NUM_VISIBLE_TABS; i++)
 	{
 		const int Page = s_aTabOrder[i];
 		TabBar.HSplitTop(10.0f, nullptr, &TabBar);
 		TabBar.HSplitTop(26.0f, &Button, &TabBar);
-		if(DoButton_MenuTab(&s_aTabButtons[Page], apTabs[Page], g_Config.m_UiSettingsPage == Page, &Button, IGraphics::CORNER_R, &m_aAnimatorsSettingsTab[Page]))
+		const bool IsDoClientTab = Page == SETTINGS_DOCLIENT;
+		if(DoButton_MenuTab(&s_aTabButtons[Page], IsDoClientTab ? "" : apTabs[Page], g_Config.m_UiSettingsPage == Page, &Button, IGraphics::CORNER_R, &m_aAnimatorsSettingsTab[Page]))
 			g_Config.m_UiSettingsPage = Page;
+		if(IsDoClientTab)
+		{
+			// "DO" in dark blue, "Client" in the default color
+			CUIRect Label = Button;
+			Label.HMargin(2.0f, &Label);
+			const float FontSize = Label.h * CUi::ms_FontmodHeight;
+			const float TotalWidth = TextRender()->TextWidth(FontSize, "DOClient", -1, -1.0f);
+			const float DoWidth = TextRender()->TextWidth(FontSize, "DO", -1, -1.0f);
+			const float StartX = Label.x + (Label.w - TotalWidth) / 2.0f;
+
+			CUIRect DoPart = Label;
+			DoPart.x = StartX;
+			DoPart.w = DoWidth;
+			TextRender()->TextColor(ColorRGBA(0.05f, 0.15f, 0.45f, 1.0f));
+			Ui()->DoLabel(&DoPart, "DO", FontSize, TEXTALIGN_MR);
+			TextRender()->TextColor(TextRender()->DefaultTextColor());
+
+			CUIRect ClientPart = Label;
+			ClientPart.x = StartX + DoWidth;
+			ClientPart.w = TotalWidth - DoWidth;
+			Ui()->DoLabel(&ClientPart, "Client", FontSize, TEXTALIGN_ML);
+		}
 	}
+
+	if(g_Config.m_UiSettingsPage == SETTINGS_LANGUAGE)
+		g_Config.m_UiSettingsPage = SETTINGS_GENERAL;
 
 	const bool Animations = g_Config.m_EcUiAnimations && g_Config.m_EcMenuAnimation;
 	if(Animations)
@@ -238,7 +264,47 @@ void CMenus::RenderSettings(CUIRect MainView)
 				Ui()->ClipDisable();
 			}
 		}
-		else if(g_Config.m_UiSettingsPage == SETTINGS_ASSETS)
+		else if(g_Config.m_UiSettingsPage == SETTINGS_GENERAL)
+		{
+			const float LangW = 300.0f;
+			const float Gap = 20.0f;
+			const float InnerW = MainView.w - LangW - Gap;
+			const float DemoW = InnerW * 0.42f;
+			const float LeftW = InnerW - DemoW - Gap;
+			const float ShiftH = (1.0f - Eased) * MainView.w;
+			const float ShiftV = (1.0f - Eased) * MainView.h;
+
+			// left column slides in from the left
+			CUIRect ClipLeft = MainView;
+			ClipLeft.w = LeftW;
+			ClipLeft.x -= ShiftH;
+			CUIRect ViewLeft = MainView;
+			ViewLeft.x -= ShiftH;
+			Ui()->ClipEnable(&ClipLeft);
+			RenderPage(ViewLeft);
+			Ui()->ClipDisable();
+
+			// demo column slides in from the top
+			CUIRect ClipCenter = MainView;
+			ClipCenter.x += LeftW + Gap;
+			ClipCenter.w = DemoW;
+			ClipCenter.y -= ShiftV;
+			CUIRect ViewCenter = MainView;
+			ViewCenter.y -= ShiftV;
+			Ui()->ClipEnable(&ClipCenter);
+			RenderPage(ViewCenter);
+			Ui()->ClipDisable();
+
+			// language column slides in from the right
+			CUIRect ClipRight = MainView;
+			ClipRight.x += MainView.w - LangW + ShiftH;
+			ClipRight.w = LangW;
+			CUIRect ViewRight = MainView;
+			ViewRight.x += ShiftH;
+			Ui()->ClipEnable(&ClipRight);
+			RenderPage(ViewRight);
+			Ui()->ClipDisable();
+		}		else if(g_Config.m_UiSettingsPage == SETTINGS_ASSETS)
 		{
 			const float SplitY = m_SettingsSplitY >= 0.0f ? std::clamp(m_SettingsSplitY, 0.0f, MainView.h) : MainView.h * 0.5f;
 			const float BottomHeight = MainView.h - SplitY;
