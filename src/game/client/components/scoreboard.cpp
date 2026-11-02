@@ -16,6 +16,8 @@
 #include <generated/protocol.h>
 
 #include <game/client/animstate.h>
+
+static bool RenderClientTagIcon(IGraphics *pGraphics, CTextCursor *pCursor, const char *pTag);
 #include <game/client/components/countryflags.h>
 #include <game/client/components/motd.h>
 #include <game/client/components/statboard.h>
@@ -417,9 +419,11 @@ void CScoreboard::RenderSpectators(CUIRect Spectators)
 
 			if(g_Config.m_EcClientTypes)
 			{
-				const char *pTag = ClientData.m_aClientTag;
+				const char *pTag = str_comp(ClientData.m_aClientTag, "[C]") == 0 ? "" : ClientData.m_aClientTag;
 				ColorRGBA TagColor(0.65f, 0.65f, 0.65f, 1.0f);
-				if(str_comp(pTag, "[EC]") == 0)
+				if(str_comp(pTag, "[DO]") == 0)
+					TagColor = ColorRGBA(0.10f, 0.24f, 0.60f, 1.0f);
+				else if(str_comp(pTag, "[EC]") == 0)
 					TagColor = ColorRGBA(1.0f, 0.45f, 0.85f, 1.0f);
 				else if(str_comp(pTag, "[RC]") == 0)
 					TagColor = ColorRGBA(0.4f, 0.6f, 1.0f, 1.0f);
@@ -431,12 +435,17 @@ void CScoreboard::RenderSpectators(CUIRect Spectators)
 					TagColor = ColorRGBA(1.0f, 0.65f, 0.2f, 1.0f);
 				}
 
-				TextRender()->TextColor(TagColor);
-				TextRender()->TextEx(pCursor, pTag);
-				TextRender()->TextEx(pCursor, " ");
-				TextRender()->TextColor(TextRender()->DefaultTextColor());
+				if(pTag != nullptr && pTag[0] != '\0' && !RenderClientTagIcon(Graphics(), pCursor, pTag))
+				{
+					TextRender()->TextColor(TagColor);
+					TextRender()->TextEx(pCursor, pTag);
+					TextRender()->TextEx(pCursor, " ");
+					TextRender()->TextColor(TextRender()->DefaultTextColor());
+				}
 			}
 
+			if(g_Config.m_EcWarListColorsSpectator && GameClient()->m_WarList.IsWar(pInfo->m_ClientId))
+				TextRender()->TextColor(GameClient()->m_WarList.ColorForClient(pInfo->m_ClientId));
 			TextRender()->TextEx(pCursor, ClientData.m_aName);
 			TextRender()->TextColor(TextRender()->DefaultTextColor());
 		};
@@ -510,6 +519,64 @@ void CScoreboard::RenderSpectators(CUIRect Spectators)
 	}
 }
 
+// Returns the icon texture for a client tag that is drawn as an image instead of text.
+static IGraphics::CTextureHandle *ClientTagTexture(IGraphics *pGraphics, const char *pTag)
+{
+	static IGraphics::CTextureHandle s_RcTagTexture;
+	static IGraphics::CTextureHandle s_BcTagTexture;
+	static IGraphics::CTextureHandle s_EcTagTexture;
+	static IGraphics::CTextureHandle s_DdTagTexture;
+	if(str_comp(pTag, "[DD]") == 0)
+	{
+		if(!s_DdTagTexture.IsValid())
+			s_DdTagTexture = pGraphics->LoadTexture("clienttags/dd.png", IStorage::TYPE_ALL);
+		return &s_DdTagTexture;
+	}
+
+
+
+	if(str_comp(pTag, "[RC]") == 0)
+	{
+		if(!s_RcTagTexture.IsValid())
+			s_RcTagTexture = pGraphics->LoadTexture("clienttags/rc.png", IStorage::TYPE_ALL);
+		return &s_RcTagTexture;
+	}
+	if(str_comp(pTag, "[EC]") == 0)
+	{
+		if(!s_EcTagTexture.IsValid())
+			s_EcTagTexture = pGraphics->LoadTexture("clienttags/ec.png", IStorage::TYPE_ALL);
+		return &s_EcTagTexture;
+	}
+	if(str_comp(pTag, "[BC]") == 0)
+	{
+		if(!s_BcTagTexture.IsValid())
+			s_BcTagTexture = pGraphics->LoadTexture("clienttags/bc.png", IStorage::TYPE_ALL);
+		return &s_BcTagTexture;
+	}
+	return nullptr;
+}
+
+// Draws the client tag as an image instead of text (Rushie/BestClient logos).
+static bool RenderClientTagIcon(IGraphics *pGraphics, CTextCursor *pCursor, const char *pTag)
+{
+	IGraphics::CTextureHandle *pTexture = ClientTagTexture(pGraphics, pTag);
+	if(pTexture == nullptr)
+		return false;
+
+	const float Size = pCursor->m_FontSize;
+	if((pCursor->m_Flags & TEXTFLAG_RENDER) != 0)
+	{
+		pGraphics->TextureSet(*pTexture);
+		pGraphics->QuadsBegin();
+		pGraphics->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+		IGraphics::CQuadItem Quad(pCursor->m_X, pCursor->m_Y, Size, Size);
+		pGraphics->QuadsDrawTL(&Quad, 1);
+		pGraphics->QuadsEnd();
+		pGraphics->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+	pCursor->m_X += Size + Size * 0.18f;
+	return true;
+}
 void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart, int CountEnd, CScoreboardRenderState &State, int NumPlayersForSize)
 {
 	dbg_assert(Team == TEAM_RED || Team == TEAM_BLUE, "Team invalid");
@@ -865,8 +932,10 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				ColorRGBA TagColor(0.65f, 0.65f, 0.65f, TextColor.a);
 				if(g_Config.m_EcClientTypes)
 				{
-					pTag = ClientData.m_aClientTag;
-					if(str_comp(pTag, "[EC]") == 0)
+					pTag = str_comp(ClientData.m_aClientTag, "[C]") == 0 ? "" : ClientData.m_aClientTag;
+					if(str_comp(pTag, "[DO]") == 0)
+					TagColor = ColorRGBA(0.10f, 0.24f, 0.60f, TextColor.a);
+				else if(str_comp(pTag, "[EC]") == 0)
 						TagColor = ColorRGBA(1.0f, 0.45f, 0.85f, TextColor.a);
 					else if(str_comp(pTag, "[RC]") == 0)
 						TagColor = ColorRGBA(0.4f, 0.6f, 1.0f, TextColor.a);
@@ -882,9 +951,24 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				float TagWidth = 0.0f;
 				if(pTag)
 				{
-					Player.m_Tag.Update(TextRender(), pTag, FontSize);
-					Player.m_Tag.Render(TextRender(), vec2(NameOffset, TextY), TagColor);
-					TagWidth = Player.m_Tag.Width() + 2.0f;
+					IGraphics::CTextureHandle *pTagTexture = ClientTagTexture(Graphics(), pTag);
+					if(pTagTexture != nullptr)
+					{
+						Graphics()->TextureSet(*pTagTexture);
+						Graphics()->QuadsBegin();
+						Graphics()->SetColor(1.0f, 1.0f, 1.0f, TextColor.a);
+						IGraphics::CQuadItem Quad(NameOffset, TextY, FontSize, FontSize);
+						Graphics()->QuadsDrawTL(&Quad, 1);
+						Graphics()->QuadsEnd();
+						Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+						TagWidth = FontSize + 2.0f;
+					}
+					else
+					{
+						Player.m_Tag.Update(TextRender(), pTag, FontSize);
+						Player.m_Tag.Render(TextRender(), vec2(NameOffset, TextY), TagColor);
+						TagWidth = Player.m_Tag.Width() + 2.0f;
+					}
 				}
 
 				if(g_Config.m_ClShowIds)
@@ -905,7 +989,20 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				{
 					NameColor = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClAuthedPlayerColor));
 				}
+				if(g_Config.m_EcWarListColorsTab && GameClient()->m_WarList.IsWar(pInfo->m_ClientId))
+					NameColor = GameClient()->m_WarList.ColorForClient(pInfo->m_ClientId).WithAlpha(TextColor.a);
 				Player.m_Name.Render(TextRender(), vec2(NameOffset + TagWidth, TextY), NameColor);
+				if(g_Config.m_EcWarListShowReason && GameClient()->m_WarList.IsWar(pInfo->m_ClientId) && GameClient()->m_WarList.ReasonForClient(pInfo->m_ClientId)[0] != '\0')
+				{
+					char aReason[160];
+					str_format(aReason, sizeof(aReason), " — %s", GameClient()->m_WarList.ReasonForClient(pInfo->m_ClientId));
+					CUIRect ReasonRect = Row;
+					ReasonRect.x = NameOffset + TagWidth + Player.m_Name.Width() + 2.0f;
+					ReasonRect.y = TextY;
+					ReasonRect.h = FontSize;
+					TextRender()->TextColor(TextRender()->DefaultTextColor());
+					Ui()->DoLabel(&ReasonRect, aReason, FontSize * 0.8f, TEXTALIGN_ML);
+				}
 
 				// ready / watching
 				if(Client()->IsSixup() && Client()->m_TranslationContext.m_aClients[pInfo->m_ClientId].m_PlayerFlags7 & protocol7::PLAYERFLAG_READY)
