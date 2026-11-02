@@ -547,6 +547,7 @@ MACRO_CONFIG_INT(EcWarListColorsChat, ec_warlist_colors_chat, 1, 0, 1, CFGFLAG_C
 MACRO_CONFIG_INT(EcWarListShowReason, ec_warlist_show_reason, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show war list reasons in the scoreboard")
 MACRO_CONFIG_INT(EcWarListChatCommands, ec_warlist_chat_commands, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Handle !war, !team and !mute chat commands in the client")
 MACRO_CONFIG_INT(EcGradientEnabled, ec_gradient_enabled, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Animated gradient colors")
+MACRO_CONFIG_INT(EcClientTypesNamePlates, ec_clienttypes_nameplates, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show client type icons in name plates")
 MACRO_CONFIG_INT(EcGradientNames, ec_gradient_names, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Gradient for nicknames")
 MACRO_CONFIG_INT(EcGradientClans, ec_gradient_clans, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Gradient for clan names")
 MACRO_CONFIG_INT(EcGradientSkin, ec_gradient_skin, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Gradient for tee skins")
