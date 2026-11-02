@@ -3,6 +3,8 @@
 
 #include "gameclient.h"
 
+static constexpr unsigned DOCLIENT_CLIENT_TAG = 7;
+
 #include "components/background.h"
 #include "components/binds.h"
 #include "components/broadcast.h"
@@ -163,6 +165,7 @@ void CGameClient::OnConsoleInit()
 					      &m_DebugHud,
 					      &m_TouchControls,
 					      &m_Scoreboard,
+					      &m_WarList,
 					      &m_Statboard,
 					      &m_Motd,
 					      &m_Menus,
@@ -1996,6 +1999,8 @@ void CGameClient::OnNewSnapshot(bool DummySwapped)
 					const unsigned int FeetTag = (unsigned int)pInfo->m_ColorFeet >> 24;
 					if(BodyTag == 101 || BodyTag == 99)
 						str_copy(pClient->m_aClientTag, "[EC]");
+					else if(BodyTag == DOCLIENT_CLIENT_TAG && FeetTag == 0)
+						str_copy(pClient->m_aClientTag, "[DO]");
 					else if(BodyTag == 4 && FeetTag == 0)
 						str_copy(pClient->m_aClientTag, "[RC]");
 					else if((BodyTag == 1 || BodyTag == 2 || BodyTag == 3 || BodyTag == 5) && FeetTag == 0)
@@ -3579,7 +3584,7 @@ void CGameClient::SendInfo(bool Start)
 		Msg.m_Country = g_Config.m_PlayerCountry;
 		Msg.m_pSkin = g_Config.m_ClPlayerSkin;
 		Msg.m_UseCustomColor = g_Config.m_ClPlayerUseCustomColor;
-		Msg.m_ColorBody = g_Config.m_ClPlayerColorBody;
+		Msg.m_ColorBody = g_Config.m_ClPlayerColorBody | (DOCLIENT_CLIENT_TAG << 24);
 		Msg.m_ColorFeet = g_Config.m_ClPlayerColorFeet;
 		CMsgPacker Packer(&Msg);
 		Msg.Pack(&Packer);
@@ -3594,7 +3599,7 @@ void CGameClient::SendInfo(bool Start)
 		Msg.m_Country = g_Config.m_PlayerCountry;
 		Msg.m_pSkin = g_Config.m_ClPlayerSkin;
 		Msg.m_UseCustomColor = g_Config.m_ClPlayerUseCustomColor;
-		Msg.m_ColorBody = g_Config.m_ClPlayerColorBody;
+		Msg.m_ColorBody = g_Config.m_ClPlayerColorBody | (DOCLIENT_CLIENT_TAG << 24);
 		Msg.m_ColorFeet = g_Config.m_ClPlayerColorFeet;
 		CMsgPacker Packer(&Msg);
 		Msg.Pack(&Packer);
@@ -3621,7 +3626,7 @@ void CGameClient::SendDummyInfo(bool Start)
 		Msg.m_Country = g_Config.m_ClDummyCountry;
 		Msg.m_pSkin = g_Config.m_ClDummySkin;
 		Msg.m_UseCustomColor = g_Config.m_ClDummyUseCustomColor;
-		Msg.m_ColorBody = g_Config.m_ClDummyColorBody;
+		Msg.m_ColorBody = g_Config.m_ClDummyColorBody | (DOCLIENT_CLIENT_TAG << 24);
 		Msg.m_ColorFeet = g_Config.m_ClDummyColorFeet;
 		CMsgPacker Packer(&Msg);
 		Msg.Pack(&Packer);
@@ -3636,7 +3641,7 @@ void CGameClient::SendDummyInfo(bool Start)
 		Msg.m_Country = g_Config.m_ClDummyCountry;
 		Msg.m_pSkin = g_Config.m_ClDummySkin;
 		Msg.m_UseCustomColor = g_Config.m_ClDummyUseCustomColor;
-		Msg.m_ColorBody = g_Config.m_ClDummyColorBody;
+		Msg.m_ColorBody = g_Config.m_ClDummyColorBody | (DOCLIENT_CLIENT_TAG << 24);
 		Msg.m_ColorFeet = g_Config.m_ClDummyColorFeet;
 		CMsgPacker Packer(&Msg);
 		Msg.Pack(&Packer);
