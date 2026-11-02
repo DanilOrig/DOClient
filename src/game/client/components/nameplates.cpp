@@ -682,6 +682,9 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 	}
 	if(g_Config.m_EcWarListColorsNamePlates && GameClient()->m_WarList.IsWar(pPlayerInfo->m_ClientId))
 		Data.m_Color = GameClient()->m_WarList.ColorForClient(pPlayerInfo->m_ClientId);
+
+	if(GameClient()->m_Gradient.NamesEnabled() && GameClient()->m_Gradient.AppliesTo(pPlayerInfo->m_ClientId))
+		Data.m_Color = GameClient()->m_Gradient.ColorFor(pPlayerInfo->m_ClientId);
 	Data.m_Color.a = Alpha;
 
 	int ShowDirectionConfig = g_Config.m_ClShowDirection;
