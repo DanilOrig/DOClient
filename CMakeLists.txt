@@ -2679,6 +2679,8 @@ if(CLIENT)
     components/ghost.cpp
     components/ghost.h
     components/hud.cpp
+    components/gradient.cpp
+    components/gradient.h
     components/hud.h
     components/important_alert.cpp
     components/important_alert.h
