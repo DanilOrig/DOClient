@@ -680,6 +680,8 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 				Data.m_Color = GameClient()->GetDDTeamColor(Team, 0.75f);
 		}
 	}
+	if(g_Config.m_EcWarListColorsNamePlates && GameClient()->m_WarList.IsWar(pPlayerInfo->m_ClientId))
+		Data.m_Color = GameClient()->m_WarList.ColorForClient(pPlayerInfo->m_ClientId);
 	Data.m_Color.a = Alpha;
 
 	int ShowDirectionConfig = g_Config.m_ClShowDirection;
