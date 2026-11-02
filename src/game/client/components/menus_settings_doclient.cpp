@@ -121,7 +121,7 @@ void CMenus::RenderDOClientSettings(CUIRect MainView)
 	// card height: top padding + heading + rows + bottom padding
 	auto CardHeight = [](int Rows) { return 42.0f + Rows * 20.0f; };
 
-	CUIRect DummyCard, SwapCard, ChatCard, AnimCard, PerfCard, LaserCard, VisualCard, InputCard, ClientCard, TranslateCard;
+	CUIRect DummyCard, SwapCard, ChatCard, AnimCard, PerfCard, LaserCard, VisualCard, GradientCard, InputCard, ClientCard, TranslateCard;
 	LeftColumn.HSplitTop(CardHeight(DummyRows), &DummyCard, &LeftColumn);
 	LeftColumn.HSplitTop(12.0f, nullptr, &LeftColumn);
 	LeftColumn.HSplitTop(CardHeight(SwapRows), &SwapCard, &LeftColumn);
@@ -141,6 +141,8 @@ void CMenus::RenderDOClientSettings(CUIRect MainView)
 	RightColumn.HSplitTop(CardHeight(VisualRows), &VisualCard, &RightColumn);
 	RightColumn.HSplitTop(12.0f, nullptr, &RightColumn);
 	RightColumn.HSplitTop(CardHeight(PerfRows), &PerfCard, &RightColumn);
+	RightColumn.HSplitTop(12.0f, nullptr, &RightColumn);
+	RightColumn.HSplitTop(CardHeight(8), &GradientCard, &RightColumn);
 
 	auto DrawCard = [&](const CUIRect &Card, const char *pTitle) {
 		Card.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.30f), IGraphics::CORNER_ALL, 10.0f);
@@ -234,6 +236,47 @@ void CMenus::RenderDOClientSettings(CUIRect MainView)
 		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClSubTickAiming, "Sub-Tick aiming", &g_Config.m_ClSubTickAiming, &Column, 20.0f);
 		if(!g_Config.m_ClSubTickAiming)
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcFastInputRepredictHook, "Repredict при смене направления хука в середине тика (может лагать)", &g_Config.m_EcFastInputRepredictHook, &Column, 20.0f);
+	}
+
+	Column = DrawCard(GradientCard, "Градиент");
+	if(DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcGradientEnabled, "Включить градиент", &g_Config.m_EcGradientEnabled, &Column, 20.0f))
+	{
+	}
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcGradientNames, "Градиент ников", &g_Config.m_EcGradientNames, &Column, 20.0f);
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcGradientClans, "Градиент кланов", &g_Config.m_EcGradientClans, &Column, 20.0f);
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcGradientSkin, "Градиент скина", &g_Config.m_EcGradientSkin, &Column, 20.0f);
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcGradientEverything, "Градиент всего", &g_Config.m_EcGradientEverything, &Column, 20.0f);
+	CUIRect GradientSlider;
+	Column.HSplitTop(20.0f, &GradientSlider, &Column);
+	Ui()->DoScrollbarOption(&g_Config.m_EcGradientSpeed, &g_Config.m_EcGradientSpeed, &GradientSlider, "Скорость:", 0, 100, &CUi::ms_LinearScrollbarScale, 0);
+
+	{
+		static CButtonContainer s_aGradientModeButtons[3];
+		CUIRect ModeRow;
+		Column.HSplitTop(20.0f, &ModeRow, &Column);
+		const char *apModeNames[3] = {"Скин", "Свой", "Радуга"};
+		const float ModeWidth = ModeRow.w / 3.0f;
+		for(int Mode = 0; Mode < 3; Mode++)
+		{
+			CUIRect ModeButton;
+			ModeRow.VSplitLeft(ModeWidth, &ModeButton, &ModeRow);
+			if(DoButton_Menu(&s_aGradientModeButtons[Mode], apModeNames[Mode], g_Config.m_EcGradientMode == Mode, &ModeButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 4.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
+				g_Config.m_EcGradientMode = Mode;
+		}
+
+		static CButtonContainer s_aGradientApplyButtons[3];
+		CUIRect ApplyRow;
+		Column.HSplitTop(4.0f, nullptr, &Column);
+		Column.HSplitTop(20.0f, &ApplyRow, &Column);
+		const char *apApplyNames[3] = {"Свои", "Другие", "Все"};
+		const float ApplyWidth = ApplyRow.w / 3.0f;
+		for(int Apply = 0; Apply < 3; Apply++)
+		{
+			CUIRect ApplyButton;
+			ApplyRow.VSplitLeft(ApplyWidth, &ApplyButton, &ApplyRow);
+			if(DoButton_Menu(&s_aGradientApplyButtons[Apply], apApplyNames[Apply], g_Config.m_EcGradientApply == Apply, &ApplyButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 4.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
+				g_Config.m_EcGradientApply = Apply;
+		}
 	}
 
 	Column = DrawCard(ClientCard, "Клиенты");
