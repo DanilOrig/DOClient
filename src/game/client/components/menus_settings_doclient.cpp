@@ -1,6 +1,9 @@
 #include "menus.h"
 
 #include <base/str.h>
+#include <game/client/ui_listbox.h>
+#include <algorithm>
+#include <base/time.h>
 
 #include <engine/serverbrowser.h>
 #include <engine/shared/config.h>
@@ -86,7 +89,7 @@ void CMenus::RegisterDOClientCommands()
 	Console()->Register("ec_toggle_custom_communities", "", CFGFLAG_CLIENT, ConToggleCustomCommunities, GameClient(), "Toggle the custom communities list in the server browser");
 }
 
-void CMenus::RenderSettingsDOClient(CUIRect MainView)
+void CMenus::RenderDOClientSettings(CUIRect MainView)
 {
 	static CScrollRegion s_ScrollRegion;
 	CScrollRegionParams ScrollParams;
@@ -289,3 +292,320 @@ void CMenus::RenderSettingsDOClient(CUIRect MainView)
 	s_ScrollRegion.AddRect(ContentRect);
 	s_ScrollRegion.End();
 }
+
+void CMenus::RenderSettingsDOClient(CUIRect MainView)
+{
+	static int s_SubTab = 0;
+
+	CUIRect TabBar, Content;
+	MainView.HSplitTop(20.0f, &TabBar, &Content);
+	const float SubTabWidth = TabBar.w / 2.0f;
+	static CButtonContainer s_aSubTabButtons[2];
+	const char *apSubTabNames[2] = {"Настройки", "Список войн"};
+	for(int Tab = 0; Tab < 2; Tab++)
+	{
+		CUIRect Button;
+		TabBar.VSplitLeft(SubTabWidth, &Button, &TabBar);
+		const int Corners = Tab == 0 ? IGraphics::CORNER_L : IGraphics::CORNER_R;
+		if(DoButton_MenuTab(&s_aSubTabButtons[Tab], apSubTabNames[Tab], s_SubTab == Tab, &Button, Corners, nullptr, nullptr, nullptr, nullptr, 4.0f))
+			s_SubTab = Tab;
+	}
+
+	Content.HSplitTop(18.0f, nullptr, &Content);
+
+	static int s_LastSubTab = -1;
+	static int64_t s_SubTabAnimStart = 0;
+	if(s_LastSubTab != s_SubTab)
+	{
+		s_LastSubTab = s_SubTab;
+		s_SubTabAnimStart = time();
+	}
+
+	auto RenderSubTab = [&](const CUIRect &View) {
+		if(s_SubTab == 0)
+			RenderDOClientSettings(View);
+		else
+			RenderDOClientWarList(View);
+	};
+
+	const bool Animations = g_Config.m_EcUiAnimations && g_Config.m_EcMenuAnimation;
+	const float Age = s_SubTabAnimStart != 0 ? (time() - s_SubTabAnimStart) / (float)time_freq() : 1.0f;
+	if(Animations && s_SubTabAnimStart != 0 && Age < 0.45f)
+	{
+		const float Progress = std::clamp(Age / 0.45f, 0.0f, 1.0f);
+		const float Inv = 1.0f - Progress;
+		const float Eased = 1.0f - Inv * Inv * Inv;
+		const CUIRect Panel = Content;
+		Ui()->ClipEnable(&Panel);
+
+		if(s_SubTab == 1)
+		{
+			// warlist: three columns (left, center, right)
+			const float ShiftH = (1.0f - Eased) * Content.w;
+			const float ShiftV = (1.0f - Eased) * Content.h;
+			const float LeftW = Content.w * 0.40f;
+			const float CenterX = LeftW + 8.0f;
+			const float CenterW = Content.w * 0.33f;
+			const float RightX = CenterX + CenterW + 8.0f;
+
+			CUIRect ClipLeft = Content;
+			ClipLeft.w = LeftW;
+			ClipLeft.x -= ShiftH;
+			CUIRect ViewLeft = Content;
+			ViewLeft.x -= ShiftH;
+			Ui()->ClipEnable(&ClipLeft);
+			RenderSubTab(ViewLeft);
+			Ui()->ClipDisable();
+
+			CUIRect ClipCenter = Content;
+			ClipCenter.x += CenterX;
+			ClipCenter.w = CenterW;
+			ClipCenter.y -= ShiftV;
+			CUIRect ViewCenter = Content;
+			ViewCenter.y -= ShiftV;
+			Ui()->ClipEnable(&ClipCenter);
+			RenderSubTab(ViewCenter);
+			Ui()->ClipDisable();
+
+			CUIRect ClipRight = Content;
+			ClipRight.x += RightX + ShiftH;
+			ClipRight.w = Content.w - RightX;
+			CUIRect ViewRight = Content;
+			ViewRight.x += ShiftH;
+			Ui()->ClipEnable(&ClipRight);
+			RenderSubTab(ViewRight);
+			Ui()->ClipDisable();
+		}
+		else
+		{
+			// settings: the original two-half animation of the settings page
+			const float HalfWidth = Content.w * 0.5f;
+			const float Shift = (1.0f - Eased) * HalfWidth;
+
+			CUIRect ClipLeft = Content;
+			ClipLeft.w = HalfWidth;
+			ClipLeft.x -= Shift;
+			CUIRect ViewLeft = Content;
+			ViewLeft.x -= Shift;
+			Ui()->ClipEnable(&ClipLeft);
+			RenderSubTab(ViewLeft);
+			Ui()->ClipDisable();
+
+			CUIRect ClipRight = Content;
+			ClipRight.x += HalfWidth + Shift;
+			ClipRight.w = Content.w - HalfWidth;
+			CUIRect ViewRight = Content;
+			ViewRight.x += Shift;
+			Ui()->ClipEnable(&ClipRight);
+			RenderSubTab(ViewRight);
+			Ui()->ClipDisable();
+		}
+
+		Ui()->ClipDisable();
+	}
+	else
+	{
+		RenderSubTab(Content);
+	}
+}
+
+void CMenus::RenderDOClientWarList(CUIRect MainView)
+{
+	CWarList *pWarList = &GameClient()->m_WarList;
+	if(pWarList->m_vTypes.empty())
+	{
+		Ui()->DoLabel(&MainView, "Список войн недоступен", 16.0f, TEXTALIGN_MC);
+		return;
+	}
+
+	static CLineInputBuffered<64> s_NameInput;
+	static CLineInputBuffered<32> s_ClanInput;
+	static CLineInputBuffered<128> s_ReasonInput;
+	static int s_SelectedType = 1;
+	static int s_SelectedEntry = -1;
+	static int s_SelectedGroup = 1;
+	static CUi::SDropDownState s_TypeDropDownState;
+
+	CUIRect Left, Middle, Right;
+	MainView.VSplitLeft(MainView.w * 0.40f, &Left, &Middle);
+	Middle.VSplitLeft(8.0f, nullptr, &Middle);
+	Middle.VSplitLeft(MainView.w * 0.33f, &Middle, &Right);
+	Right.VSplitLeft(8.0f, &Right, &Right);
+
+	// ***** Left: entries ***** //
+	{
+		CUIRect Header;
+		Left.HSplitTop(24.0f, &Header, &Left);
+		Ui()->DoLabel(&Header, "Игроки и кланы", 16.0f, TEXTALIGN_ML);
+		Left.HSplitTop(4.0f, nullptr, &Left);
+
+		static CListBox s_ListBox;
+		s_ListBox.DoStart(20.0f, pWarList->m_vEntries.size(), 1, 3, s_SelectedEntry, &Left, true);
+		for(size_t i = 0; i < pWarList->m_vEntries.size(); i++)
+		{
+			CWarListEntry &Entry = pWarList->m_vEntries[i];
+			char aText[128];
+			if(Entry.m_aName[0] != '\0')
+				str_format(aText, sizeof(aText), "%s", Entry.m_aName);
+			else
+				str_format(aText, sizeof(aText), "clan %s", Entry.m_aClan);
+
+			const CListboxItem Item = s_ListBox.DoNextItem(&Entry, s_SelectedEntry == (int)i);
+			if(!Item.m_Visible)
+				continue;
+
+			CUIRect Label, DeleteButton;
+			Item.m_Rect.VSplitRight(20.0f, &Label, &DeleteButton);
+
+			const ColorRGBA Color = (Entry.m_Type >= 0 && Entry.m_Type < (int)pWarList->m_vTypes.size()) ? pWarList->m_vTypes[Entry.m_Type].m_Color : ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f);
+			TextRender()->TextColor(Color);
+			Ui()->DoLabel(&Label, aText, 14.0f, TEXTALIGN_ML);
+			TextRender()->TextColor(TextRender()->DefaultTextColor());
+
+			static CButtonContainer s_aDeleteButtons[64];
+			if(DoButton_Menu(&s_aDeleteButtons[i % 64], "x", 0, &DeleteButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 3.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.3f)))
+			{
+				pWarList->RemoveEntry((int)i);
+				s_SelectedEntry = -1;
+				break;
+			}
+		}
+		s_SelectedEntry = s_ListBox.DoEnd();
+
+	}
+
+	// ***** Middle: editing ***** //
+	{
+		CUIRect Header, Row, Label;
+		Middle.HSplitTop(24.0f, &Header, &Middle);
+		Ui()->DoLabel(&Header, "Редактирование", 16.0f, TEXTALIGN_ML);
+		Middle.HSplitTop(4.0f, nullptr, &Middle);
+
+		Middle.HSplitTop(20.0f, &Row, &Middle);
+		Row.VSplitLeft(50.0f, &Label, &Row);
+		Ui()->DoLabel(&Label, "Имя:", 14.0f, TEXTALIGN_ML);
+		Ui()->DoClearableEditBox(&s_NameInput, &Row, 14.0f);
+
+		Middle.HSplitTop(4.0f, nullptr, &Middle);
+		Middle.HSplitTop(20.0f, &Row, &Middle);
+		Row.VSplitLeft(50.0f, &Label, &Row);
+		Ui()->DoLabel(&Label, "Клан:", 14.0f, TEXTALIGN_ML);
+		Ui()->DoClearableEditBox(&s_ClanInput, &Row, 14.0f);
+
+		Middle.HSplitTop(4.0f, nullptr, &Middle);
+		Middle.HSplitTop(20.0f, &Row, &Middle);
+		Row.VSplitLeft(50.0f, &Label, &Row);
+		Ui()->DoLabel(&Label, "Причина:", 14.0f, TEXTALIGN_ML);
+		Ui()->DoClearableEditBox(&s_ReasonInput, &Row, 14.0f);
+
+		Middle.HSplitTop(4.0f, nullptr, &Middle);
+		Middle.HSplitTop(20.0f, &Row, &Middle);
+		Row.VSplitLeft(50.0f, &Label, &Row);
+		Ui()->DoLabel(&Label, "Группа:", 14.0f, TEXTALIGN_ML);
+
+		static const char *s_apTypeNames[32];
+		const int NumTypes = std::min<int>((int)pWarList->m_vTypes.size(), 32);
+		for(int i = 0; i < NumTypes; i++)
+			s_apTypeNames[i] = pWarList->m_vTypes[i].m_aName;
+		const int NewType = Ui()->DoDropDown(&Row, s_SelectedType, s_apTypeNames, NumTypes, s_TypeDropDownState);
+		if(NewType != s_SelectedType)
+			s_SelectedType = NewType;
+
+		Middle.HSplitTop(8.0f, nullptr, &Middle);
+		CUIRect ButtonsRow;
+		Middle.HSplitTop(22.0f, &ButtonsRow, &Middle);
+		CUIRect AddNameButton, AddClanButton;
+		ButtonsRow.VSplitLeft(ButtonsRow.w / 2.0f - 3.0f, &AddNameButton, nullptr);
+		ButtonsRow.VSplitRight(ButtonsRow.w / 2.0f - 3.0f, nullptr, &AddClanButton);
+
+		static CButtonContainer s_AddNameButton, s_AddClanButton, s_RemoveButton;
+		const bool HasName = s_NameInput.GetString()[0] != '\0';
+		const bool HasClan = s_ClanInput.GetString()[0] != '\0';
+		const int Type = (s_SelectedType >= 0 && s_SelectedType < NumTypes) ? s_SelectedType : 1;
+
+		if(DoButton_Menu(&s_AddNameButton, "Добавить игрока", HasName ? 0 : 2, &AddNameButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 4.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.3f)) && HasName)
+		{
+			pWarList->AddEntry(s_NameInput.GetString(), "", s_ReasonInput.GetString(), pWarList->m_vTypes[Type].m_aName);
+			s_NameInput.Clear();
+		}
+		if(DoButton_Menu(&s_AddClanButton, "Добавить клан", HasClan ? 0 : 2, &AddClanButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 4.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.3f)) && HasClan)
+		{
+			pWarList->AddEntry("", s_ClanInput.GetString(), s_ReasonInput.GetString(), pWarList->m_vTypes[Type].m_aName);
+			s_ClanInput.Clear();
+		}
+
+		Middle.HSplitTop(8.0f, nullptr, &Middle);
+		CUIRect RemoveRow;
+		Middle.HSplitTop(22.0f, &RemoveRow, &Middle);
+		if(DoButton_Menu(&s_RemoveButton, "Удалить выбранное", s_SelectedEntry < 0 ? 2 : 0, &RemoveRow, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 4.0f, 0.0f, ColorRGBA(0.4f, 0.0f, 0.0f, 0.3f)) && s_SelectedEntry >= 0)
+		{
+			pWarList->RemoveEntry(s_SelectedEntry);
+			s_SelectedEntry = -1;
+		}
+	}
+
+	// ***** Right: groups ***** //
+	{
+		CUIRect Header;
+		Right.HSplitTop(24.0f, &Header, &Right);
+		Ui()->DoLabel(&Header, "Группы", 16.0f, TEXTALIGN_ML);
+		Right.HSplitTop(4.0f, nullptr, &Right);
+
+		static CButtonContainer s_aGroupRows[16];
+		for(int i = 0; i < (int)pWarList->m_vTypes.size(); i++)
+		{
+			CUIRect Row, Label, Swatch, DeleteButton, ColorSquare;
+			Right.HSplitTop(22.0f, &Row, &Right);
+			Row.VSplitRight(20.0f, &Row, &DeleteButton);
+			Row.VSplitRight(26.0f, &Label, &Swatch);
+
+			if(Ui()->DoButtonLogic(&s_aGroupRows[i % 16], s_SelectedGroup == i, &Row, BUTTONFLAG_LEFT))
+				s_SelectedGroup = i;
+			if(s_SelectedGroup == i)
+				Row.Draw(ColorRGBA(1.0f, 1.0f, 1.0f, 0.12f), IGraphics::CORNER_ALL, 4.0f);
+
+			// text first, then the color square
+			CUIRect LabelRect = Label;
+			LabelRect.VMargin(4.0f, &LabelRect);
+			Ui()->DoLabel(&LabelRect, pWarList->m_vTypes[i].m_aName, 14.0f, TEXTALIGN_ML);
+
+			ColorSquare = Swatch;
+			ColorSquare.Margin(2.0f, &ColorSquare);
+			ColorSquare.Draw(pWarList->m_vTypes[i].m_Color, IGraphics::CORNER_ALL, 4.0f);
+
+			if(pWarList->m_vTypes[i].m_Removable)
+			{
+				static CButtonContainer s_aGroupDeleteButtons[16];
+				if(DoButton_Menu(&s_aGroupDeleteButtons[i % 16], "x", 0, &DeleteButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 3.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.3f)))
+					pWarList->RemoveType(i);
+			}
+		}
+
+		if(s_SelectedGroup >= 0 && s_SelectedGroup < (int)pWarList->m_vTypes.size())
+		{
+			Right.HSplitTop(8.0f, nullptr, &Right);
+			CUIRect PickerRow, PickerSquare, PickerLabel;
+			Right.HSplitTop(24.0f, &PickerRow, &Right);
+			PickerRow.VSplitLeft(48.0f, &PickerSquare, &PickerRow);
+			unsigned HslaColor = color_cast<ColorHSLA>(pWarList->m_vTypes[s_SelectedGroup].m_Color).Pack(false);
+			const ColorHSLA Picked = DoButton_ColorPicker(&PickerSquare, &HslaColor, false);
+			const ColorRGBA PickedColor = color_cast<ColorRGBA>(Picked);
+			if(PickedColor != pWarList->m_vTypes[s_SelectedGroup].m_Color)
+			{
+				pWarList->SetTypeColor(s_SelectedGroup, PickedColor);
+				if(!Ui()->IsPopupOpen())
+					pWarList->Save();
+			}
+			PickerLabel = PickerRow;
+			PickerLabel.x += 8.0f;
+			Ui()->DoLabel(&PickerLabel, "Цвет выбранной группы", 14.0f, TEXTALIGN_ML);
+		}
+
+		Right.HSplitTop(14.0f, nullptr, &Right);
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcWarListColorsTab, "Цвета в табло", &g_Config.m_EcWarListColorsTab, &Right, 20.0f);
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcWarListColorsSpectator, "Цвета в наблюдателях", &g_Config.m_EcWarListColorsSpectator, &Right, 20.0f);
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcWarListColorsNamePlates, "Цвета в нейм-плейтах", &g_Config.m_EcWarListColorsNamePlates, &Right, 20.0f);
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcWarListColorsChat, "Цвета в чате", &g_Config.m_EcWarListColorsChat, &Right, 20.0f);
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_EcWarListShowReason, "Показывать причины", &g_Config.m_EcWarListShowReason, &Right, 20.0f);
+		}
+	}
