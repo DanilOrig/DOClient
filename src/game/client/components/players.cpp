@@ -961,6 +961,16 @@ void CPlayers::OnRender()
 		aRenderInfo[i] = GameClient()->m_aClients[i].m_RenderInfo;
 		aRenderInfo[i].m_TeeRenderFlags = 0;
 
+		// animated gradient colors for the tee skin
+		if(GameClient()->m_Gradient.SkinEnabled() && GameClient()->m_Gradient.AppliesTo(i))
+		{
+			const ColorRGBA GradientColor = GameClient()->m_Gradient.ColorFor(i);
+			aRenderInfo[i].m_ColorBody = GradientColor;
+			aRenderInfo[i].m_ColorFeet = GradientColor;
+			if(aRenderInfo[i].m_OriginalRenderSkin.m_Body.IsValid())
+				aRenderInfo[i].m_ColorBody = GradientColor;
+		}
+
 		// predict freeze skin only for local players
 		bool Frozen = false;
 		if(i == GameClient()->m_aLocalIds[0] || i == GameClient()->m_aLocalIds[1])
