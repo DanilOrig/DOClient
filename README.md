@@ -16,21 +16,33 @@
 
 ## Скачать
 
-Последняя сборка — в разделе **[Releases](../../releases)**:
+Последняя сборка — **[v1.3-entity](../../releases/latest)**:
 
 | Файл | Что это |
 |---|---|
-| `DOClient-win64.zip` | сам клиент (`DDNet.exe`), Windows x64 |
-| `DOClient-stt-models.zip` | модели и DLL для голосового ввода, распаковать в `data/stt` |
-| `DOClient-source.zip` | исходники этой сборки |
+| `DOClient-Entity-win64.zip` | клиент (`DDNet.exe`) + data, Windows x64 |
+| `Source code (zip/tar.gz)` | исходники этой сборки (генерирует GitHub) |
 
 ## Установка
 
-1. Распакуй `DOClient-win64.zip` в отдельную папку (или поверх установленного DDNet).
-2. Распакуй `DOClient-stt-models.zip` так, чтобы получилось `data/stt/...` (нужно только для голосового ввода).
-3. Запусти `DDNet.exe`.
+1. Распакуй `DOClient-Entity-win64.zip` в отдельную папку.
+2. Запусти `DDNet.exe`.
+3. Настройки → вкладка **DOClient**.
 
 Требования: Windows 10/11 x64, GPU с OpenGL 3.3+.
+Используется общий профиль `%APPDATA%\DDNet`.
+
+## Сборка из исходников
+
+```
+git clone https://github.com/DanilOrig/DOClient.git
+cd DOClient
+git submodule update --init --recursive
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DDEV=OFF
+cmake --build build --config Release --target game-client
+```
+
+---
 
 ## Возможности
 
