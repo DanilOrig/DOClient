@@ -12,8 +12,8 @@
 class CTooltip
 {
 public:
-	CTooltip(const void *pId, const CUIRect &Rect, const char *pText, float WidthHint, float FontSize, bool Truncated) :
-		m_pId(pId), m_Rect(Rect), m_pText(pText), m_WidthHint(WidthHint), m_FontSize(FontSize), m_Truncated(Truncated), m_OnScreen(false) {}
+	CTooltip(const void *pId, const CUIRect &Rect, const char *pText, float WidthHint, float FontSize, bool Truncated, float FadeTime = 0.75f) :
+		m_pId(pId), m_Rect(Rect), m_pText(pText), m_WidthHint(WidthHint), m_FontSize(FontSize), m_Truncated(Truncated), m_OnScreen(false), m_FadeTime(FadeTime) {}
 
 	const void *m_pId;
 	CUIRect m_Rect;
@@ -22,6 +22,7 @@ public:
 	float m_FontSize;
 	bool m_Truncated;
 	bool m_OnScreen; // used to know if the tooltip should be rendered.
+	float m_FadeTime;
 };
 
 class CUi;

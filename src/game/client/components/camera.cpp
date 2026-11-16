@@ -15,8 +15,6 @@
 #include <game/localization.h>
 #include <game/mapitems.h>
 
-#include <limits>
-
 CCamera::CCamera()
 {
 	m_CamType = CAMTYPE_UNDEFINED;
@@ -72,7 +70,7 @@ void CCamera::ScaleZoom(float Factor)
 
 float CCamera::MaxZoomLevel()
 {
-	return (g_Config.m_ClLimitMaxZoomLevel) ? ((Graphics()->IsTileBufferingEnabled() ? 240 : 30)) : std::numeric_limits<float>::max();
+	return (g_Config.m_ClLimitMaxZoomLevel) ? ((Graphics()->IsTileBufferingEnabled() ? 240 : 30)) : 2000;
 }
 
 float CCamera::MinZoomLevel()
@@ -499,16 +497,19 @@ void CCamera::ConGotoTele(IConsole::IResult *pResult, void *pUserData)
 	pSelf->GotoTele(pResult->GetInteger(0), pResult->NumArguments() > 1 ? pResult->GetInteger(1) : -1);
 }
 
-void CCamera::SetView(ivec2 Pos, bool Relative)
+void CCamera::SetViewPos(vec2 Pos)
 {
-	vec2 RealPos = vec2(Pos.x * 32.0, Pos.y * 32.0);
-	vec2 UntestedViewPos = Relative ? m_ForceFreeviewPos + RealPos : RealPos;
-
 	m_ForceFreeview = true;
 
 	m_ForceFreeviewPos = vec2(
-		std::clamp(UntestedViewPos.x, 200.0f, Collision()->GetWidth() * 32 - 200.0f),
-		std::clamp(UntestedViewPos.y, 200.0f, Collision()->GetHeight() * 32 - 200.0f));
+		std::clamp(Pos.x, 200.0f, Collision()->GetWidth() * 32 - 200.0f),
+		std::clamp(Pos.y, 200.0f, Collision()->GetHeight() * 32 - 200.0f));
+}
+
+void CCamera::SetView(ivec2 Pos, bool Relative)
+{
+	vec2 RealPos = vec2(Pos.x * 32.0, Pos.y * 32.0);
+	SetViewPos(Relative ? m_ForceFreeviewPos + RealPos : RealPos);
 }
 
 void CCamera::GotoSwitch(int Number, int Offset)
@@ -625,9 +626,29 @@ int CCamera::Deadzone() const
 	return g_Config.m_ClDyncam ? g_Config.m_ClDyncamDeadzone : g_Config.m_ClMouseDeadzone;
 }
 
-int CCamera::FollowFactor() const
+float CCamera::FollowFactor() const
 {
-	return g_Config.m_ClDyncam ? g_Config.m_ClDyncamFollowFactor : g_Config.m_ClMouseFollowfactor;
+	float Factor = g_Config.m_ClDyncam ? g_Config.m_ClDyncamFollowFactor : g_Config.m_ClMouseFollowfactor;
+	if(g_Config.m_ClDyncam && g_Config.m_ClDyncamZoom)
+	{
+		const float BaseFactor = g_Config.m_ClDyncamFollowFactor / 100.0f;
+		const float CursorScale = 1.0f + BaseFactor * (m_Zoom - 1.0f);
+		Factor = NetworkFollowFactor(m_Zoom) * CursorScale;
+	}
+
+	return Factor;
+}
+
+int CCamera::NetworkFollowFactor(float Zoom) const
+{
+	if(!g_Config.m_ClDyncam || !g_Config.m_ClDyncamZoom)
+		return g_Config.m_ClDyncam ? g_Config.m_ClDyncamFollowFactor : g_Config.m_ClMouseFollowfactor;
+
+	const float BaseFactor = g_Config.m_ClDyncamFollowFactor / 100.0f;
+	const float CursorScale = 1.0f + BaseFactor * (Zoom - 1.0f);
+	// DyncamZoomCursorTarget scales the input vector by CursorScale past the deadzone.
+	// Use the integer sent to the server for both the local and spectator camera offsets.
+	return CursorScale > 0.0f ? round_to_int(std::clamp(g_Config.m_ClDyncamFollowFactor * Zoom / CursorScale, 0.0f, 200.0f)) : 0;
 }
 
 bool CCamera::CanUseAutoSpecCamera() const

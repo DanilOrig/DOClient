@@ -25,9 +25,6 @@
 CControls::CControls()
 {
 	mem_zero(&m_aLastData, sizeof(m_aLastData));
-	mem_zero(&m_aFastInput, sizeof(m_aFastInput));
-	m_FastInputHookAction = false;
-	m_FastInputFireAction = false;
 	std::fill(std::begin(m_aMouseOnAction), std::end(m_aMouseOnAction), false);
 	std::fill(std::begin(m_aMousePos), std::end(m_aMousePos), vec2(0.0f, 0.0f));
 	std::fill(std::begin(m_aMousePosOnAction), std::end(m_aMousePosOnAction), vec2(0.0f, 0.0f));
@@ -241,17 +238,40 @@ void CControls::OnMessage(int Msg, void *pRawMsg)
 	}
 }
 
+void CControls::ApplyGoresMode(CNetObj_PlayerInput &Input) const
+{
+	if(!g_Config.m_ClGoresMode)
+		return;
+
+	const CCharacterCore &Core = g_Config.m_EcFastInput && GameClient()->m_Snap.m_LocalClientId >= 0 ?
+					     GameClient()->m_aClients[GameClient()->m_Snap.m_LocalClientId].m_RegularPredicted :
+					     GameClient()->m_PredictedChar;
+	if(g_Config.m_ClGoresModeDisableIfWeapons && (Core.m_aWeapons[WEAPON_GRENADE].m_Got || Core.m_aWeapons[WEAPON_LASER].m_Got || Core.m_aWeapons[WEAPON_SHOTGUN].m_Got))
+		return;
+
+	if(Input.m_Fire & 1)
+	{
+		if(Core.m_ActiveWeapon != WEAPON_HAMMER)
+		{
+			Input.m_WantedWeapon = 0;
+			Input.m_PrevWeapon += 2;
+		}
+	}
+	else
+		Input.m_WantedWeapon = WEAPON_GUN + 1;
+}
+
 int CControls::SnapInput(int *pData)
 {
 	// update player state
-	if(GameClient()->m_Chat.IsActive())
+	if(GameClient()->m_Chat.IsActive() && g_Config.m_ClChatBubble)
 		m_aInputData[g_Config.m_ClDummy].m_PlayerFlags = PLAYERFLAG_CHATTING;
-	else if(GameClient()->m_Menus.IsActive())
+	else if(GameClient()->m_Menus.IsActive() && g_Config.m_ClSendMenuFlag)
 		m_aInputData[g_Config.m_ClDummy].m_PlayerFlags = PLAYERFLAG_IN_MENU;
 	else
 		m_aInputData[g_Config.m_ClDummy].m_PlayerFlags = PLAYERFLAG_PLAYING;
 
-	if(GameClient()->m_Scoreboard.IsActive())
+	if(GameClient()->m_Scoreboard.IsActive() || g_Config.m_ClPingNameCircle)
 		m_aInputData[g_Config.m_ClDummy].m_PlayerFlags |= PLAYERFLAG_SCOREBOARD;
 
 	if(Client()->ServerCapAnyPlayerFlag() && GameClient()->m_Controls.m_aShowHookColl[g_Config.m_ClDummy])
@@ -287,32 +307,49 @@ int CControls::SnapInput(int *pData)
 
 		// set the target anyway though so that we can keep seeing our surroundings,
 		// even if chat or menu are activated
-		m_aInputData[g_Config.m_ClDummy].m_TargetX = (int)m_aMousePos[g_Config.m_ClDummy].x;
-		m_aInputData[g_Config.m_ClDummy].m_TargetY = (int)m_aMousePos[g_Config.m_ClDummy].y;
+		vec2 Pos = DyncamZoomCursorTarget(m_aMousePos[g_Config.m_ClDummy]);
+		if(g_Config.m_ClScaleMouseDistance && !(g_Config.m_ClDyncam && g_Config.m_ClDyncamZoom) && !GameClient()->m_Snap.m_SpecInfo.m_Active)
+		{
+			const int MaxDistance = g_Config.m_ClDyncam ? g_Config.m_ClDyncamMaxDistance : g_Config.m_ClMouseMaxDistance;
+			if(MaxDistance > 5 && MaxDistance < 1000) // Don't scale if angle bind or reduces precision
+				Pos *= 1000.0f / (float)MaxDistance;
+		}
+		m_aInputData[g_Config.m_ClDummy].m_TargetX = (int)Pos.x;
+		m_aInputData[g_Config.m_ClDummy].m_TargetY = (int)Pos.y;
+
+		if(!m_aInputData[g_Config.m_ClDummy].m_TargetX && !m_aInputData[g_Config.m_ClDummy].m_TargetY)
+			m_aInputData[g_Config.m_ClDummy].m_TargetX = 1;
 
 		// send once a second just to be sure
 		Send = Send || time_get() > m_LastSendTime + time_freq();
 	}
 	else
 	{
-		m_aInputData[g_Config.m_ClDummy].m_TargetX = (int)m_aMousePos[g_Config.m_ClDummy].x;
-		m_aInputData[g_Config.m_ClDummy].m_TargetY = (int)m_aMousePos[g_Config.m_ClDummy].y;
-
+		vec2 Pos;
 		if(g_Config.m_ClSubTickAiming && m_aMousePosOnAction[g_Config.m_ClDummy] != vec2(0.0f, 0.0f))
 		{
-			m_aInputData[g_Config.m_ClDummy].m_TargetX = (int)m_aMousePosOnAction[g_Config.m_ClDummy].x;
-			m_aInputData[g_Config.m_ClDummy].m_TargetY = (int)m_aMousePosOnAction[g_Config.m_ClDummy].y;
+			// TClient
+			Pos = GameClient()->m_Controls.m_aMousePosOnAction[g_Config.m_ClDummy];
 			m_aMousePosOnAction[g_Config.m_ClDummy] = vec2(0.0f, 0.0f);
 		}
+		else
+			Pos = GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy];
 
 		m_FastInputHookAction = false;
 		m_FastInputFireAction = false;
 
-		if(!m_aInputData[g_Config.m_ClDummy].m_TargetX && !m_aInputData[g_Config.m_ClDummy].m_TargetY)
+		Pos = DyncamZoomCursorTarget(Pos);
+		if(g_Config.m_ClScaleMouseDistance && !(g_Config.m_ClDyncam && g_Config.m_ClDyncamZoom) && !GameClient()->m_Snap.m_SpecInfo.m_Active)
 		{
-			m_aInputData[g_Config.m_ClDummy].m_TargetX = 1;
-			m_aMousePos[g_Config.m_ClDummy].x = 1;
+			const int MaxDistance = g_Config.m_ClDyncam ? g_Config.m_ClDyncamMaxDistance : g_Config.m_ClMouseMaxDistance;
+			if(MaxDistance > 5 && MaxDistance < 1000) // Don't scale if angle bind or reduces precision
+				Pos *= 1000.0f / (float)MaxDistance;
 		}
+		m_aInputData[g_Config.m_ClDummy].m_TargetX = (int)Pos.x;
+		m_aInputData[g_Config.m_ClDummy].m_TargetY = (int)Pos.y;
+
+		if(!m_aInputData[g_Config.m_ClDummy].m_TargetX && !m_aInputData[g_Config.m_ClDummy].m_TargetY)
+			m_aInputData[g_Config.m_ClDummy].m_TargetX = 1;
 
 		// set direction
 		m_aInputData[g_Config.m_ClDummy].m_Direction = 0;
@@ -320,6 +357,8 @@ int CControls::SnapInput(int *pData)
 			m_aInputData[g_Config.m_ClDummy].m_Direction = -1;
 		if(!m_aInputDirectionLeft[g_Config.m_ClDummy] && m_aInputDirectionRight[g_Config.m_ClDummy])
 			m_aInputData[g_Config.m_ClDummy].m_Direction = 1;
+
+		ApplyGoresMode(m_aInputData[g_Config.m_ClDummy]);
 
 		// dummy copy moves
 		if(g_Config.m_ClDummyCopyMoves)
@@ -335,10 +374,10 @@ int CControls::SnapInput(int *pData)
 				pDummyInput->m_PlayerFlags = m_aInputData[g_Config.m_ClDummy].m_PlayerFlags;
 				pDummyInput->m_TargetX = m_aInputData[g_Config.m_ClDummy].m_TargetX;
 				pDummyInput->m_TargetY = m_aInputData[g_Config.m_ClDummy].m_TargetY;
-
 				if(!g_Config.m_ClDummyControl)
 					pDummyInput->m_Fire += m_aInputData[g_Config.m_ClDummy].m_Fire - m_aLastData[g_Config.m_ClDummy].m_Fire;
 
+				// DOClient: optionally keep the dummy on its own weapon
 				if(!g_Config.m_EcNoCopyWeapon)
 				{
 					pDummyInput->m_WantedWeapon = m_aInputData[g_Config.m_ClDummy].m_WantedWeapon;
@@ -436,7 +475,7 @@ void CControls::OnRender()
 		// make sure to compensate for smooth dyncam to ensure the cursor stays still in world space if zoomed
 		vec2 DyncamOffsetDelta = GameClient()->m_Camera.m_DyncamTargetCameraOffset - GameClient()->m_Camera.m_aDyncamCurrentCameraOffset[g_Config.m_ClDummy];
 		float Zoom = GameClient()->m_Camera.m_Zoom;
-		m_aTargetPos[g_Config.m_ClDummy] = GameClient()->m_LocalCharacterPos + m_aMousePos[g_Config.m_ClDummy] - DyncamOffsetDelta + DyncamOffsetDelta / Zoom;
+		m_aTargetPos[g_Config.m_ClDummy] = GameClient()->m_LocalCharacterPos + DyncamZoomCursorTarget(m_aMousePos[g_Config.m_ClDummy]) - DyncamOffsetDelta + DyncamOffsetDelta / Zoom;
 	}
 	else if(GameClient()->m_Snap.m_SpecInfo.m_Active && GameClient()->m_Snap.m_SpecInfo.m_UsePosition)
 	{
@@ -452,9 +491,6 @@ bool CControls::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
 {
 	if(GameClient()->IsWorldPaused())
 		return false;
-
-	if(CursorType == IInput::CURSOR_MOUSE && GameClient()->m_Chat.IsActive())
-		return true;
 
 	if(CursorType == IInput::CURSOR_JOYSTICK && g_Config.m_InpControllerAbsolute && GameClient()->m_Snap.m_pGameInfoObj && !GameClient()->m_Snap.m_SpecInfo.m_Active)
 	{
@@ -490,7 +526,16 @@ bool CControls::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
 	if(GameClient()->m_Snap.m_SpecInfo.m_Active && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId < 0)
 		Factor *= GameClient()->m_Camera.m_Zoom;
 
-	m_aMousePos[g_Config.m_ClDummy] += vec2(x, y) * Factor;
+	if(g_Config.m_ClDecoupleMouseSens && CursorType == IInput::CURSOR_MOUSE)
+	{
+		vec2 MouseSens = vec2(g_Config.m_ClMouseSensXIngame / 100.0f, g_Config.m_ClMouseSensYIngame / 100.0f);
+		if(GameClient()->m_Snap.m_SpecInfo.m_Active && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId < 0)
+			MouseSens *= GameClient()->m_Camera.m_Zoom;
+
+		m_aMousePos[g_Config.m_ClDummy] += vec2(x, y) * MouseSens;
+	}
+	else
+		m_aMousePos[g_Config.m_ClDummy] += vec2(x, y) * Factor;
 	GameClient()->m_Controls.m_aMouseInputType[g_Config.m_ClDummy] = CControls::EMouseInputType::RELATIVE;
 	ClampMousePos();
 	return true;
@@ -520,12 +565,38 @@ void CControls::ClampMousePos()
 		MouseDistance = length(m_aMousePos[g_Config.m_ClDummy]);
 		if(MouseDistance > MouseMax)
 			m_aMousePos[g_Config.m_ClDummy] = normalize_pre_length(m_aMousePos[g_Config.m_ClDummy], MouseDistance) * MouseMax;
+
+		if(g_Config.m_ClLimitMouseToScreen)
+		{
+			float Width, Height;
+			Graphics()->CalcScreenParams(Graphics()->ScreenAspect(), 1.0f, &Width, &Height);
+			Height /= 2.0f;
+			Width /= 2.0f;
+			if(g_Config.m_ClLimitMouseToScreen == 2)
+				Width = Height;
+			m_aMousePos[g_Config.m_ClDummy].y = std::clamp(m_aMousePos[g_Config.m_ClDummy].y, -Height, Height);
+			m_aMousePos[g_Config.m_ClDummy].x = std::clamp(m_aMousePos[g_Config.m_ClDummy].x, -Width, Width);
+		}
 	}
 }
 
 float CControls::GetMinMouseDistance() const
 {
 	return g_Config.m_ClDyncam ? g_Config.m_ClDyncamMinDistance : g_Config.m_ClMouseMinDistance;
+}
+
+vec2 CControls::DyncamZoomCursorTarget(vec2 MousePos) const
+{
+	if(!g_Config.m_ClDyncam || !g_Config.m_ClDyncamZoom || GameClient()->m_Snap.m_SpecInfo.m_Active)
+		return MousePos;
+
+	const float Distance = length(MousePos);
+	if(Distance <= g_Config.m_ClDyncamDeadzone || GameClient()->m_Camera.NetworkFollowFactor(GameClient()->m_Camera.m_Zoom) == 0)
+		return MousePos;
+
+	const float BaseFollowFactor = g_Config.m_ClDyncamFollowFactor / 100.0f;
+	const float ExtraOffset = (Distance - g_Config.m_ClDyncamDeadzone) * BaseFollowFactor * (GameClient()->m_Camera.m_Zoom - 1.0f);
+	return MousePos + normalize_pre_length(MousePos, Distance) * ExtraOffset;
 }
 
 float CControls::GetMaxMouseDistance() const
@@ -539,7 +610,7 @@ float CControls::GetMaxMouseDistance() const
 
 bool CControls::CheckNewInput()
 {
-	bool NewInput[NUM_DUMMIES] = {};
+	bool NewInput[2] = {};
 	for(int Dummy = 0; Dummy < NUM_DUMMIES; Dummy++)
 	{
 		CNetObj_PlayerInput TestInput = m_aInputData[Dummy];
@@ -550,6 +621,9 @@ bool CControls::CheckNewInput()
 				TestInput.m_Direction = -1;
 			if(!m_aInputDirectionLeft[Dummy] && m_aInputDirectionRight[Dummy])
 				TestInput.m_Direction = 1;
+			if(GameClient()->m_Snap.m_pLocalCharacter && !GameClient()->m_Snap.m_SpecInfo.m_Active &&
+				!GameClient()->m_Chat.IsActive() && !GameClient()->m_Menus.IsActive())
+				ApplyGoresMode(TestInput);
 		}
 
 		if(m_aFastInput[Dummy].m_Direction != TestInput.m_Direction)
@@ -567,11 +641,7 @@ bool CControls::CheckNewInput()
 		if(m_aFastInput[Dummy].m_WantedWeapon != TestInput.m_WantedWeapon)
 			NewInput[Dummy] = true;
 
-		// When sub tick aiming is disabled on the first tick of a hook it's viable to update the fast input
-		// prediction on every mouse movement before the hook+direction input is sent and finalized.
-		const bool RefreshHookAim = g_Config.m_EcFastInputRepredictHook && !g_Config.m_ClSubTickAiming &&
-					    Dummy == g_Config.m_ClDummy && TestInput.m_Hook && !m_aLastData[Dummy].m_Hook;
-		bool SetMousePos = RefreshHookAim;
+		bool SetMousePos = false;
 		// We need to be careful about how we manage the mouse position to avoid mispredicted hooks and fires
 		// on the first tick that they activate before we know what mouse position we actually sent to the server
 		if(Dummy == g_Config.m_ClDummy)
@@ -594,10 +664,9 @@ bool CControls::CheckNewInput()
 
 		if(SetMousePos)
 		{
-			TestInput.m_TargetX = (int)m_aMousePos[Dummy].x;
-			TestInput.m_TargetY = (int)m_aMousePos[Dummy].y;
-			if(RefreshHookAim && (TestInput.m_TargetX != m_aFastInput[Dummy].m_TargetX || TestInput.m_TargetY != m_aFastInput[Dummy].m_TargetY))
-				NewInput[Dummy] = true;
+			const vec2 Pos = DyncamZoomCursorTarget(m_aMousePos[Dummy]);
+			TestInput.m_TargetX = (int)Pos.x;
+			TestInput.m_TargetY = (int)Pos.y;
 		}
 		else
 		{
@@ -608,5 +677,8 @@ bool CControls::CheckNewInput()
 		m_aFastInput[Dummy] = TestInput;
 	}
 
-	return NewInput[0] || NewInput[1];
+	if(NewInput[0] || NewInput[1])
+		return true;
+	else
+		return false;
 }

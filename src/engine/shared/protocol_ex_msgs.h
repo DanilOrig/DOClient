@@ -31,6 +31,7 @@ UUID(NETMSG_IDONTKNOW, "i-dont-know@ddnet.tw")
 UUID(NETMSG_RCONTYPE, "rcon-type@ddnet.tw")
 UUID(NETMSG_MAP_DETAILS, "map-details@ddnet.tw")
 UUID(NETMSG_CAPABILITIES, "capabilities@ddnet.tw")
+UUID(NETMSG_IAMQXD, "i-am-qxd@qxdFox.github.io")
 UUID(NETMSG_CLIENTVER, "clientver@ddnet.tw")
 UUID(NETMSG_PINGEX, "ping@ddnet.tw")
 UUID(NETMSG_PONGEX, "pong@ddnet.tw")
@@ -45,3 +46,9 @@ UUID(NETMSG_RECONNECT, "reconnect@ddnet.org")
 UUID(NETMSG_MAPLIST_ADD, "sv-maplist-add@ddnet.org")
 UUID(NETMSG_MAPLIST_GROUP_START, "sv-maplist-start@ddnet.org")
 UUID(NETMSG_MAPLIST_GROUP_END, "sv-maplist-end@ddnet.org")
+
+// <FoxNet
+UUID(NETMSG_FOXNET_INFO, "sv-foxnet-info@foxnet-ddnet.github.io")
+UUID(NETMSG_FOXNET_FASTINPUTS, "cl-foxnet-fastinputs@foxnet-ddnet.github.io")
+UUID(NETMSG_FOXNET_COSMETIC_SNAPS, "cosmetic-snaps@foxnet-ddnet.github.io")
+// FoxNet>

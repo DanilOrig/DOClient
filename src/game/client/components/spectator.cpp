@@ -7,6 +7,7 @@
 
 #include <base/dbg.h>
 #include <base/log.h>
+#include <base/str.h>
 
 #include <engine/graphics.h>
 #include <engine/shared/config.h>
@@ -481,6 +482,15 @@ void CSpectator::OnRender()
 			if(NextDDTeam != DDTeam)
 				Corners |= IGraphics::CORNER_BL | IGraphics::CORNER_BR;
 			Graphics()->DrawRect(Width / 2.0f + x - 10.0f + BoxOffset, Height / 2.0f + y + BoxMove, 270.0f - BoxOffset, LineHeight, Color, Corners, RoundRadius);
+			if(g_Config.m_ClRevertTeamColors)
+			{
+				int TeamRectSides = IGraphics::SIDE_L | IGraphics::SIDE_R;
+				if(Corners & IGraphics::CORNER_T)
+					TeamRectSides |= IGraphics::SIDE_T;
+				if(Corners & IGraphics::CORNER_B)
+					TeamRectSides |= IGraphics::SIDE_B;
+				Graphics()->DrawRectOutline(Width / 2.0f + x - 10.0f + BoxOffset, Height / 2.0f + y + BoxMove, 270.0f - BoxOffset, LineHeight, ColorRGBA(0.7f, 0.7f, 0.7f, 1.0f), Corners, TeamRectSides, RoundRadius);
+			}
 		}
 
 		OldDDTeam = DDTeam;
@@ -529,15 +539,30 @@ void CSpectator::OnRender()
 			}
 		}
 		float TeeAlpha;
-		if(Client()->State() == IClient::STATE_DEMOPLAYBACK &&
-			!GameClient()->m_Snap.m_aCharacters[GameClient()->m_Snap.m_apInfoByDDTeamName[i]->m_ClientId].m_Active)
+		if(Client()->State() == IClient::STATE_DEMOPLAYBACK && !GameClient()->m_Snap.m_aCharacters[GameClient()->m_Snap.m_apInfoByDDTeamName[i]->m_ClientId].m_Active)
 		{
 			TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.25f);
 			TeeAlpha = 0.5f;
 		}
 		else
 		{
-			TextRender()->TextColor(1.0f, 1.0f, 1.0f, PlayerSelected ? 1.0f : 0.5f);
+			int ClientId = GameClient()->m_Snap.m_apInfoByDDTeamName[i]->m_ClientId;
+
+			float Alpha = 0.5f;
+			if(PlayerSelected)
+				Alpha = 1.0f;
+
+			ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f, Alpha);
+
+			if(GameClient()->m_aClients[ClientId].m_Friend && g_Config.m_ClSpecMenuFriendColor)
+				Color = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClFriendColor));
+			CWarType *pWarType = GameClient()->m_WarList.GetPriorityType(ClientId);
+			if(pWarType && pWarType->m_SpecMenuColor)
+			{
+				if(GameClient()->m_WarList.GetAnyWar(ClientId) && g_Config.m_ClWarList)
+					Color = GameClient()->m_WarList.GetPriorityColor(ClientId);
+			}
+			TextRender()->TextColor(Color.WithAlpha(Alpha));
 			TeeAlpha = 1.0f;
 		}
 		CTextCursor NameCursor;
@@ -592,9 +617,24 @@ void CSpectator::OnRender()
 
 		if(GameClient()->m_aClients[GameClient()->m_Snap.m_apInfoByDDTeamName[i]->m_ClientId].m_Friend)
 		{
-			TextRender()->TextColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClMessageFriendColor)));
-			TextRender()->Text(Width / 2.0f + x - TeeInfo.m_Size / 2.0f, Height / 2.0f + y + BoxMove + (LineHeight - FontSize) / 2.f, FontSize, "♥", 220.0f);
+			char aPrefix[64];
+			str_format_prefix(aPrefix, g_Config.m_ClFriendPrefix);
+			TextRender()->TextColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClFriendColor)).WithAlpha(PlayerSelected ? 1.0f : 0.5f));
+			TextRender()->Text(Width / 2.0f + x - TeeInfo.m_Size / 2.0f, Height / 2.0f + y + BoxMove + (LineHeight - FontSize) / 2.f, FontSize, aPrefix, 220.0f);
 			TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+		}
+		else if(g_Config.m_ClWarList)
+		{
+			const int ClientId = GameClient()->m_Snap.m_apInfoByDDTeamName[i]->m_ClientId;
+			CWarType *pWarType = GameClient()->m_WarList.GetPriorityType(ClientId);
+			if(pWarType && pWarType->m_SpecMenuPrefix)
+			{
+				char aPrefix[64];
+				str_format_prefix(aPrefix, pWarType->m_aPrefix);
+				TextRender()->TextColor(GameClient()->m_WarList.GetPriorityColor(ClientId).WithAlpha(PlayerSelected ? 1.0f : 0.5f));
+				TextRender()->Text(Width / 2.0f + x - TeeInfo.m_Size / 2.0f, Height / 2.0f + y + BoxMove + (LineHeight - FontSize) / 2.f, FontSize, aPrefix, 220.0f);
+				TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+			}
 		}
 
 		y += LineHeight;

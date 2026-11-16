@@ -77,18 +77,18 @@ int main(int argc, const char *argv[])
 	}
 
 	char aaMapNames[3][64];
-	str_copy(aaMapNames[0], argv[1]); //from_map
-	str_copy(aaMapNames[1], argv[4]); //to_map
-	str_copy(aaMapNames[2], argv[9]); //output_map
+	str_copy(aaMapNames[0], argv[1]); // from_map
+	str_copy(aaMapNames[1], argv[4]); // to_map
+	str_copy(aaMapNames[2], argv[9]); // output_map
 
 	float aaaGameAreas[2][2][2];
 
 	for(int i = 0; i < 2; i++)
 	{
-		aaaGameAreas[i][0][0] = str_tofloat(argv[2 + i * 3]) * 32; //x
-		aaaGameAreas[i][1][0] = str_tofloat(argv[3 + i * 3]) * 32; //y
-		aaaGameAreas[i][0][1] = aaaGameAreas[i][0][0] + str_tofloat(argv[7]) * 32; //x + width
-		aaaGameAreas[i][1][1] = aaaGameAreas[i][1][0] + str_tofloat(argv[8]) * 32; //y + height
+		aaaGameAreas[i][0][0] = str_tofloat(argv[2 + i * 3]) * 32; // x
+		aaaGameAreas[i][1][0] = str_tofloat(argv[3 + i * 3]) * 32; // y
+		aaaGameAreas[i][0][1] = aaaGameAreas[i][0][0] + str_tofloat(argv[7]) * 32; // x + width
+		aaaGameAreas[i][1][1] = aaaGameAreas[i][1][0] + str_tofloat(argv[8]) * 32; // y + height
 	}
 
 	log_info(TOOL_NAME, "from_map='%s'; to_map='%s'; from_area='%fx,%fy'; to_area='%fx,%fy'; area_width='%fpx'; area_height='%fpx'; output_map='%s'",

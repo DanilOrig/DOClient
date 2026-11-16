@@ -5,7 +5,6 @@
 #include <base/dbg.h>
 #include <base/math.h>
 #include <base/str.h>
-#include <base/time.h>
 
 #include <engine/graphics.h>
 #include <engine/shared/config.h>
@@ -25,7 +24,6 @@ void CMenus::SetNeedSendInfo()
 
 void CMenus::RenderSettings(CUIRect MainView)
 {
-
 	// render background
 	CUIRect Button, TabBar, RestartBar;
 	MainView.VSplitRight(120.0f, &MainView, &TabBar);
@@ -46,389 +44,100 @@ void CMenus::RenderSettings(CUIRect MainView)
 		Localize("Language"),
 		Localize("General"),
 		Localize("Player"),
-		Client()->IsSixup() ? "Tee 0.7" : Localize("Tee"),
+		(Client()->IsSixup() || g_Config.m_ClForceSevenSkin) ? "Tee 0.7" : Localize("Tee"),
 		Localize("Appearance"),
 		Localize("Controls"),
 		Localize("Graphics"),
+		"DOClient",
 		Localize("Sound"),
 		Localize("DDNet"),
 		Localize("Assets"),
-		Localize("Credits"),
-		"DOClient"};
-	constexpr int NUM_VISIBLE_TABS = SETTINGS_LENGTH - 1;
-	static const int s_aTabOrder[NUM_VISIBLE_TABS] = {
-		SETTINGS_GENERAL,
-		SETTINGS_PLAYER,
-		SETTINGS_TEE,
-		SETTINGS_APPEARANCE,
-		SETTINGS_CONTROLS,
-		SETTINGS_GRAPHICS,
-		SETTINGS_SOUND,
-		SETTINGS_DOCLIENT,
-		SETTINGS_DDNET,
-		SETTINGS_ASSETS,
-		SETTINGS_CREDITS};
+		("E-Client"),
+		("Profiles")};
+
 	static CButtonContainer s_aTabButtons[SETTINGS_LENGTH];
 
-	for(int i = 0; i < NUM_VISIBLE_TABS; i++)
+	for(int i = 0; i < SETTINGS_LENGTH; i++)
 	{
-		const int Page = s_aTabOrder[i];
 		TabBar.HSplitTop(10.0f, nullptr, &TabBar);
 		TabBar.HSplitTop(26.0f, &Button, &TabBar);
-		const bool IsDoClientTab = Page == SETTINGS_DOCLIENT;
-		if(DoButton_MenuTab(&s_aTabButtons[Page], IsDoClientTab ? "" : apTabs[Page], g_Config.m_UiSettingsPage == Page, &Button, IGraphics::CORNER_R, &m_aAnimatorsSettingsTab[Page]))
-			g_Config.m_UiSettingsPage = Page;
-		if(IsDoClientTab)
-		{
-			// "DO" in dark blue, "Client" in the default color
-			CUIRect Label = Button;
-			Label.HMargin(2.0f, &Label);
-			const float FontSize = Label.h * CUi::ms_FontmodHeight;
-			const float TotalWidth = TextRender()->TextWidth(FontSize, "DOClient", -1, -1.0f);
-			const float DoWidth = TextRender()->TextWidth(FontSize, "DO", -1, -1.0f);
-			const float StartX = Label.x + (Label.w - TotalWidth) / 2.0f;
-
-			CUIRect DoPart = Label;
-			DoPart.x = StartX;
-			DoPart.w = DoWidth;
-			TextRender()->TextColor(ColorRGBA(0.05f, 0.15f, 0.45f, 1.0f));
-			Ui()->DoLabel(&DoPart, "DO", FontSize, TEXTALIGN_MR);
-			TextRender()->TextColor(TextRender()->DefaultTextColor());
-
-			CUIRect ClientPart = Label;
-			ClientPart.x = StartX + DoWidth;
-			ClientPart.w = TotalWidth - DoWidth;
-			Ui()->DoLabel(&ClientPart, "Client", FontSize, TEXTALIGN_ML);
-		}
+		if(DoButton_MenuTab(&s_aTabButtons[i], apTabs[i], g_Config.m_UiSettingsPage == i, &Button, IGraphics::CORNER_R, &m_aAnimatorsSettingsTab[i]))
+			g_Config.m_UiSettingsPage = i;
 	}
 
 	if(g_Config.m_UiSettingsPage == SETTINGS_LANGUAGE)
-		g_Config.m_UiSettingsPage = SETTINGS_GENERAL;
-
-	const bool Animations = g_Config.m_EcUiAnimations && g_Config.m_EcMenuAnimation;
-	if(Animations)
 	{
-		if(m_LastSettingsPage < 0 || m_LastSettingsPage != g_Config.m_UiSettingsPage)
-			m_SettingsPageChangeTime = time();
-		m_LastSettingsPage = g_Config.m_UiSettingsPage;
-	}
-	else
-	{
-		m_SettingsPageChangeTime = 0;
-		m_LastSettingsPage = -1;
-	}
-	// keep the menu background position in sync (once per frame, not once per animation pass)
-	switch(g_Config.m_UiSettingsPage)
-	{
-	case SETTINGS_LANGUAGE:
 		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_LANGUAGE);
-		break;
-	case SETTINGS_GENERAL:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_GENERAL);
-		break;
-	case SETTINGS_PLAYER:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_PLAYER);
-		break;
-	case SETTINGS_TEE:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_TEE);
-		break;
-	case SETTINGS_APPEARANCE:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_APPEARANCE);
-		break;
-	case SETTINGS_CONTROLS:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_CONTROLS);
-		break;
-	case SETTINGS_GRAPHICS:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_GRAPHICS);
-		break;
-	case SETTINGS_DOCLIENT:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_RESERVED0);
-		break;
-	case SETTINGS_SOUND:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_SOUND);
-		break;
-	case SETTINGS_DDNET:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_DDNET);
-		break;
-	case SETTINGS_ASSETS:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_ASSETS);
-		break;
-	case SETTINGS_CREDITS:
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_CREDITS);
-		break;
-	default:
-		break;
-	}
-
-	auto RenderPage = [&](const CUIRect &View) {
-		m_SettingsViewY = View.y;
-		m_SettingsViewX = View.x;
-	if(g_Config.m_UiSettingsPage == SETTINGS_LANGUAGE)
-	{
-		RenderLanguageSettings(View);
+		RenderLanguageSettings(MainView);
 	}
 	else if(g_Config.m_UiSettingsPage == SETTINGS_GENERAL)
 	{
-		RenderSettingsGeneral(View);
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_GENERAL);
+		RenderSettingsGeneral(MainView);
 	}
 	else if(g_Config.m_UiSettingsPage == SETTINGS_PLAYER)
 	{
-		RenderSettingsPlayer(View);
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_PLAYER);
+		RenderSettingsPlayer(MainView);
 	}
 	else if(g_Config.m_UiSettingsPage == SETTINGS_TEE)
 	{
-		if(Client()->IsSixup())
-			RenderSettingsTee7(View);
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_TEE);
+		if(Client()->IsSixup() || g_Config.m_ClForceSevenSkin)
+			RenderSettingsTee7(MainView);
 		else
-			RenderSettingsTee(View);
+			RenderSettingsTee(MainView);
 	}
 	else if(g_Config.m_UiSettingsPage == SETTINGS_APPEARANCE)
 	{
-		RenderSettingsAppearance(View);
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_APPEARANCE);
+		RenderSettingsAppearance(MainView);
 	}
 	else if(g_Config.m_UiSettingsPage == SETTINGS_CONTROLS)
 	{
-		m_MenusSettingsControls.Render(View);
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_CONTROLS);
+		m_MenusSettingsControls.Render(MainView);
 	}
 	else if(g_Config.m_UiSettingsPage == SETTINGS_GRAPHICS)
 	{
-		RenderSettingsGraphics(View);
-	}
-	else if(g_Config.m_UiSettingsPage == SETTINGS_DOCLIENT)
-	{
-		RenderSettingsDOClient(View);
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_GRAPHICS);
+		RenderSettingsGraphics(MainView);
 	}
 	else if(g_Config.m_UiSettingsPage == SETTINGS_SOUND)
 	{
-		RenderSettingsSound(View);
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_SOUND);
+		RenderSettingsSound(MainView);
+	}
+	else if(g_Config.m_UiSettingsPage == SETTINGS_DOCLIENT)
+	{
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_GRAPHICS);
+		RenderSettingsDOClient(MainView);
 	}
 	else if(g_Config.m_UiSettingsPage == SETTINGS_DDNET)
 	{
-		RenderSettingsDDNet(View);
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_DDNET);
+		RenderSettingsDDNet(MainView);
 	}
 	else if(g_Config.m_UiSettingsPage == SETTINGS_ASSETS)
 	{
-		RenderSettingsAssets(View);
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_ASSETS);
+		RenderSettingsAssets(MainView);
 	}
-	else if(g_Config.m_UiSettingsPage == SETTINGS_CREDITS)
+	else if(g_Config.m_UiSettingsPage == SETTINGS_ENTITY)
 	{
-		RenderSettingsCredits(View);
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_ENTITY);
+		RenderSettingsEntity(MainView);
+	}
+	else if(g_Config.m_UiSettingsPage == SETTINGS_SKINPROFILES)
+	{
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_SKINPROFILES);
+		RenderSettingsProfiles(MainView);
 	}
 	else
 	{
 		dbg_assert_failed("ui_settings_page invalid");
 	}
 
-	};
-
-	const float AnimAge = Animations && m_SettingsPageChangeTime != 0 ? (time() - m_SettingsPageChangeTime) / (float)time_freq() : 1.0f;
-	if(AnimAge < 0.45f)
-	{
-		const float Progress = std::clamp(AnimAge / 0.45f, 0.0f, 1.0f);
-		const float Inv = 1.0f - Progress;
-		const float Eased = 1.0f - Inv * Inv * Inv;
-
-		const CUIRect PanelArea = MainView;
-		Ui()->ClipEnable(&PanelArea);
-
-		const float SplitY = m_SettingsSplitY >= 0.0f ? std::clamp(m_SettingsSplitY, 0.0f, MainView.h) : MainView.h * 0.5f;
-		const float Slide = (1.0f - Eased) * 20.0f;
-
-		if(g_Config.m_UiSettingsPage == SETTINGS_TEE)
-		{
-			const float TopHeight = SplitY;
-			const float BottomHeight = MainView.h - SplitY;
-			const float TopVisible = TopHeight * Eased;
-			const float BottomVisible = BottomHeight * Eased;
-
-			if(TopVisible > 1.0f)
-			{
-				CUIRect ClipTop = MainView;
-				ClipTop.h = TopVisible;
-				CUIRect ViewTop = MainView;
-				ViewTop.y -= Slide;
-				Ui()->ClipEnable(&ClipTop);
-				RenderPage(ViewTop);
-				Ui()->ClipDisable();
-			}
-
-			if(BottomVisible > 1.0f)
-			{
-				CUIRect ClipBottom = MainView;
-				ClipBottom.y += MainView.h - BottomVisible;
-				ClipBottom.h = BottomVisible;
-				CUIRect ViewBottom = MainView;
-				ViewBottom.y += Slide;
-				Ui()->ClipEnable(&ClipBottom);
-				RenderPage(ViewBottom);
-				Ui()->ClipDisable();
-			}
-		}
-		else if(g_Config.m_UiSettingsPage == SETTINGS_GENERAL)
-		{
-			const float LangW = 300.0f;
-			const float Gap = 20.0f;
-			const float InnerW = MainView.w - LangW - Gap;
-			const float DemoW = InnerW * 0.42f;
-			const float LeftW = InnerW - DemoW - Gap;
-			const float ShiftH = (1.0f - Eased) * MainView.w;
-			const float ShiftV = (1.0f - Eased) * MainView.h;
-
-			// left column slides in from the left
-			CUIRect ClipLeft = MainView;
-			ClipLeft.w = LeftW;
-			ClipLeft.x -= ShiftH;
-			CUIRect ViewLeft = MainView;
-			ViewLeft.x -= ShiftH;
-			Ui()->ClipEnable(&ClipLeft);
-			RenderPage(ViewLeft);
-			Ui()->ClipDisable();
-
-			// demo column slides in from the top
-			CUIRect ClipCenter = MainView;
-			ClipCenter.x += LeftW + Gap;
-			ClipCenter.w = DemoW;
-			ClipCenter.y -= ShiftV;
-			CUIRect ViewCenter = MainView;
-			ViewCenter.y -= ShiftV;
-			Ui()->ClipEnable(&ClipCenter);
-			RenderPage(ViewCenter);
-			Ui()->ClipDisable();
-
-			// language column slides in from the right
-			CUIRect ClipRight = MainView;
-			ClipRight.x += MainView.w - LangW + ShiftH;
-			ClipRight.w = LangW;
-			CUIRect ViewRight = MainView;
-			ViewRight.x += ShiftH;
-			Ui()->ClipEnable(&ClipRight);
-			RenderPage(ViewRight);
-			Ui()->ClipDisable();
-		}		else if(g_Config.m_UiSettingsPage == SETTINGS_ASSETS)
-		{
-			const float SplitY = m_SettingsSplitY >= 0.0f ? std::clamp(m_SettingsSplitY, 0.0f, MainView.h) : MainView.h * 0.5f;
-			const float BottomHeight = MainView.h - SplitY;
-			const float BottomVisible = BottomHeight * Eased;
-			const float Slide = (1.0f - Eased) * 20.0f;
-
-			const float TopHalfWidth = MainView.w * 0.5f;
-			const float TopShift = (1.0f - Eased) * TopHalfWidth;
-
-			CUIRect ClipTopLeft = MainView;
-			ClipTopLeft.h = SplitY;
-			ClipTopLeft.w = TopHalfWidth;
-			ClipTopLeft.x -= TopShift;
-			CUIRect ViewTopLeft = MainView;
-			ViewTopLeft.x -= TopShift;
-			Ui()->ClipEnable(&ClipTopLeft);
-			RenderPage(ViewTopLeft);
-			Ui()->ClipDisable();
-
-			CUIRect ClipTopRight = MainView;
-			ClipTopRight.h = SplitY;
-			ClipTopRight.x += TopHalfWidth + TopShift;
-			ClipTopRight.w = MainView.w - TopHalfWidth;
-			CUIRect ViewTopRight = MainView;
-			ViewTopRight.x += TopShift;
-			Ui()->ClipEnable(&ClipTopRight);
-			RenderPage(ViewTopRight);
-			Ui()->ClipDisable();
-
-			if(BottomVisible > 1.0f)
-			{
-				CUIRect ClipBottom = MainView;
-				ClipBottom.y += MainView.h - BottomVisible;
-				ClipBottom.h = BottomVisible;
-				CUIRect View = MainView;
-				View.y += Slide;
-				Ui()->ClipEnable(&ClipBottom);
-				RenderPage(View);
-				Ui()->ClipDisable();
-			}
-		}		else if(g_Config.m_UiSettingsPage == SETTINGS_LANGUAGE || g_Config.m_UiSettingsPage == SETTINGS_SOUND)
-		{
-			CUIRect View = MainView;
-			View.x -= (1.0f - Eased) * MainView.w;
-			RenderPage(View);
-		}
-		else if(g_Config.m_UiSettingsPage == SETTINGS_CREDITS)
-		{
-			const float VisibleHeight = MainView.h * Eased;
-			const float Slide = (1.0f - Eased) * 24.0f;
-
-			CUIRect ClipTop = MainView;
-			ClipTop.h = VisibleHeight;
-			CUIRect View = MainView;
-			View.y -= Slide;
-			Ui()->ClipEnable(&ClipTop);
-			RenderPage(View);
-			Ui()->ClipDisable();
-		}		else if(g_Config.m_UiSettingsPage == SETTINGS_PLAYER)
-		{
-			const float TopHeight = SplitY;
-			const float BottomHeight = MainView.h - SplitY;
-			const float TopEase = Progress < 0.5f ? 2.0f * Progress * Progress : 1.0f - std::pow(-2.0f * Progress + 2.0f, 2.0f) * 0.5f;
-			const float TopVisible = MainView.w * TopEase;
-			const float BottomVisible = BottomHeight * Eased;
-
-			if(TopVisible > 1.0f)
-			{
-				CUIRect ClipTop = MainView;
-				ClipTop.w = TopVisible;
-				ClipTop.h = TopHeight;
-				CUIRect ViewTop = MainView;
-				ViewTop.x += Slide;
-				Ui()->ClipEnable(&ClipTop);
-				RenderPage(ViewTop);
-				Ui()->ClipDisable();
-			}
-
-			if(BottomVisible > 1.0f)
-			{
-				CUIRect ClipBottom = MainView;
-				ClipBottom.y += MainView.h - BottomVisible;
-				ClipBottom.h = BottomVisible;
-				CUIRect ViewBottom = MainView;
-				ViewBottom.y += Slide;
-				Ui()->ClipEnable(&ClipBottom);
-				RenderPage(ViewBottom);
-				Ui()->ClipDisable();
-			}
-		}
-		else
-		{
-			float HalfWidth = MainView.w * 0.5f;
-			if(g_Config.m_UiSettingsPage == SETTINGS_GRAPHICS && m_SettingsSplitX >= 0.0f)
-				HalfWidth = std::clamp(m_SettingsSplitX, 1.0f, MainView.w - 1.0f);
-			else if(g_Config.m_UiSettingsPage == SETTINGS_CONTROLS)
-				HalfWidth = MainView.w * 0.49f;
-			const float Shift = (1.0f - Eased) * HalfWidth;
-
-			CUIRect ClipLeft = MainView;
-			ClipLeft.w = HalfWidth;
-			ClipLeft.x -= Shift;
-			CUIRect ViewLeft = MainView;
-			ViewLeft.x -= Shift;
-			Ui()->ClipEnable(&ClipLeft);
-			RenderPage(ViewLeft);
-			Ui()->ClipDisable();
-
-			CUIRect ClipRight = MainView;
-			ClipRight.x += HalfWidth + Shift;
-			ClipRight.w = MainView.w - HalfWidth;
-			CUIRect ViewRight = MainView;
-			ViewRight.x += Shift;
-			Ui()->ClipEnable(&ClipRight);
-			RenderPage(ViewRight);
-			Ui()->ClipDisable();
-		}
-
-		Ui()->ClipDisable();
-	}
-	else
-	{
-		RenderPage(MainView);
-	}
 	if(NeedRestart)
 	{
 		CUIRect RestartWarning, RestartButton;
@@ -460,7 +169,7 @@ void CMenus::RenderSettings(CUIRect MainView)
 	}
 }
 
-bool CMenus::RenderHslaScrollbars(CUIRect *pRect, unsigned int *pColor, bool Alpha, float DarkestLight)
+bool CMenus::RenderHslaScrollbars(CUIRect *pRect, unsigned int *pColor, bool Alpha, float DarkestLight, bool ShowPreview)
 {
 	const unsigned PrevPackedColor = *pColor;
 	ColorHSLA Color(*pColor, Alpha);
@@ -472,14 +181,17 @@ bool CMenus::RenderHslaScrollbars(CUIRect *pRect, unsigned int *pColor, bool Alp
 	const float PreviewHeight = 40.0f + 2 * PreviewMargin;
 	const float OffY = (SizePerEntry + MarginPerEntry) * (3 + (Alpha ? 1 : 0)) - PreviewHeight;
 
-	CUIRect Preview;
-	pRect->VSplitLeft(PreviewHeight, &Preview, pRect);
-	Preview.HSplitTop(OffY / 2.0f, nullptr, &Preview);
-	Preview.HSplitTop(PreviewHeight, &Preview, nullptr);
+	if(ShowPreview)
+	{
+		CUIRect Preview;
+		pRect->VSplitLeft(PreviewHeight, &Preview, pRect);
+		Preview.HSplitTop(OffY / 2.0f, nullptr, &Preview);
+		Preview.HSplitTop(PreviewHeight, &Preview, nullptr);
 
-	Preview.Draw(ColorRGBA(0.15f, 0.15f, 0.15f, 1.0f), IGraphics::CORNER_ALL, 4.0f + PreviewMargin);
-	Preview.Margin(PreviewMargin, &Preview);
-	Preview.Draw(color_cast<ColorRGBA>(Color.UnclampLighting(DarkestLight)), IGraphics::CORNER_ALL, 4.0f + PreviewMargin);
+		Preview.Draw(ColorRGBA(0.15f, 0.15f, 0.15f, 1.0f), IGraphics::CORNER_ALL, 4.0f + PreviewMargin);
+		Preview.Margin(PreviewMargin, &Preview);
+		Preview.Draw(color_cast<ColorRGBA>(Color.UnclampLighting(DarkestLight)), IGraphics::CORNER_ALL, 4.0f + PreviewMargin);
+	}
 
 	auto &&RenderHueRect = [&](CUIRect *pColorRect) {
 		float CurXOff = pColorRect->x;

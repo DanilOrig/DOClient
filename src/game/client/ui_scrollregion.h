@@ -110,6 +110,7 @@ public:
 private:
 	float m_ScrollPos;
 	float m_ContentSize;
+	bool m_RequestedScrollSmooth;
 	float m_RequestScrollPos; // [0, ContentSize]
 	EScrollRelative m_ScrollDirection;
 	float m_ScrollSpeedMultiplier;
@@ -126,6 +127,9 @@ private:
 	float m_ContentScrollOffset;
 	CScrollRegionParams m_Params;
 
+	// EClient
+	bool m_CanAnimate;
+
 public:
 	enum EScrollOption
 	{
@@ -140,7 +144,7 @@ public:
 	void Begin(CUIRect *pClipRect, const CScrollRegionParams *pParams = nullptr);
 	void End();
 	bool AddRect(const CUIRect &Rect, bool ShouldScrollHere = false); // returns true if the added rect is visible (not clipped)
-	void ScrollHere(EScrollOption Option = SCROLLHERE_KEEP_IN_VIEW);
+	void ScrollHere(EScrollOption Option = SCROLLHERE_KEEP_IN_VIEW, bool Smooth = false);
 	void ScrollRelative(EScrollRelative Direction, float SpeedMultiplier = 1.0f);
 	void ScrollRelativeDirect(vec2 ScrollAmount);
 	void DoEdgeScrolling();

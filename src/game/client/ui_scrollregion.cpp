@@ -55,6 +55,8 @@ void CScrollRegion::Begin(CUIRect *pClipRect, const CScrollRegionParams *pParams
 
 void CScrollRegion::End()
 {
+	m_CanAnimate = false; // EClient
+
 	Ui()->ClipDisable();
 
 	// only show scrollbar if content overflows
@@ -65,6 +67,8 @@ void CScrollRegion::End()
 	UpdateHotScrollRegion();
 	AdvanceAnimation();
 	DoSlider();
+
+	m_CanAnimate = true; // EClient
 }
 
 bool CScrollRegion::AddRect(const CUIRect &Rect, bool ShouldScrollHere)
@@ -79,7 +83,7 @@ bool CScrollRegion::AddRect(const CUIRect &Rect, bool ShouldScrollHere)
 	return !RectClipped(Rect);
 }
 
-void CScrollRegion::ScrollHere(EScrollOption Option)
+void CScrollRegion::ScrollHere(EScrollOption Option, bool Smooth)
 {
 	const float LastAddedPos = m_Params.m_ScrollHorizontal ? m_LastAddedRect.x : m_LastAddedRect.y;
 	const float LastAddedSize = m_Params.m_ScrollHorizontal ? m_LastAddedRect.w : m_LastAddedRect.h;
@@ -105,6 +109,7 @@ void CScrollRegion::ScrollHere(EScrollOption Option)
 			m_RequestScrollPos = TopScroll - (ContentAreaSize() - MinHeight);
 		break;
 	}
+	m_RequestedScrollSmooth = Smooth; // EClient
 }
 
 void CScrollRegion::ScrollRelative(EScrollRelative Direction, float SpeedMultiplier)
@@ -155,7 +160,7 @@ bool CScrollRegion::ScrollbarShown() const
 
 bool CScrollRegion::Animating() const
 {
-	return m_AnimTime > 0.0f;
+	return m_AnimTime > 0.0f && m_CanAnimate;
 }
 
 bool CScrollRegion::Active() const
@@ -278,8 +283,20 @@ void CScrollRegion::AdvanceAnimation()
 	if(m_RequestScrollPos >= 0.0f)
 	{
 		m_AnimTargetScrollPos = m_RequestScrollPos;
-		m_AnimTime = 0.0f;
 		m_RequestScrollPos = -1.0f;
+
+		const float SmoothTime = g_Config.m_UiSmoothScrollTime / 1000.0f;
+		if(m_RequestedScrollSmooth && SmoothTime > 0.0f && absolute(m_ScrollPos - m_AnimTargetScrollPos) >= 0.5f)
+		{
+			m_AnimTimeMax = SmoothTime;
+			m_AnimTime = m_AnimTimeMax;
+			m_AnimInitScrollPos = m_ScrollPos;
+		}
+		else
+		{
+			m_AnimTime = 0.0f;
+		}
+		m_RequestedScrollSmooth = false;
 	}
 
 	m_AnimTargetScrollPos = std::clamp(m_AnimTargetScrollPos, 0.0f, MaxScroll());

@@ -3,6 +3,7 @@
 #include "render.h"
 
 #include "animstate.h"
+#include "gameclient.h"
 
 #include <base/math.h>
 #include <base/str.h>
@@ -15,6 +16,7 @@
 #include <generated/protocol.h>
 #include <generated/protocol7.h>
 
+#include <game/client/skin.h>
 #include <game/mapitems.h>
 
 #include <cmath>
@@ -91,10 +93,11 @@ bool CSkinDescriptor::CSixup::operator==(const CSixup &Other) const
 	       m_XmasHat == Other.m_XmasHat;
 }
 
-void CRenderTools::Init(IGraphics *pGraphics, ITextRender *pTextRender)
+void CRenderTools::Init(IGraphics *pGraphics, ITextRender *pTextRender, CGameClient *pGameClient)
 {
 	m_pGraphics = pGraphics;
 	m_pTextRender = pTextRender;
+	m_pGameClient = pGameClient;
 	m_TeeQuadContainerIndex = Graphics()->CreateQuadContainer(false);
 	Graphics()->SetColor(1.f, 1.f, 1.f, 1.f);
 
@@ -129,12 +132,12 @@ void CRenderTools::Init(IGraphics *pGraphics, ITextRender *pTextRender)
 	Graphics()->QuadContainerUpload(m_TeeQuadContainerIndex);
 }
 
-void CRenderTools::RenderCursor(vec2 Center, float Size) const
+void CRenderTools::RenderCursor(vec2 Center, float Size, float Alpha) const
 {
 	Graphics()->WrapClamp();
 	Graphics()->TextureSet(g_pData->m_aImages[IMAGE_CURSOR].m_Id);
 	Graphics()->QuadsBegin();
-	Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+	Graphics()->SetColor(1.0f, 1.0f, 1.0f, Alpha);
 	IGraphics::CQuadItem QuadItem(Center.x, Center.y, Size, Size);
 	Graphics()->QuadsDrawTL(&QuadItem, 1);
 	Graphics()->QuadsEnd();
@@ -161,7 +164,8 @@ void CRenderTools::GetRenderTeeAnimScaleAndBaseSize(const CTeeRenderInfo *pInfo,
 
 void CRenderTools::GetRenderTeeBodyScale(float BaseSize, float &BodyScale)
 {
-	BodyScale = g_Config.m_ClFatSkins ? BaseSize * 1.3f : BaseSize;
+	BodyScale = g_Config.m_ClFatSkins ? BaseSize * 1.3f : g_Config.m_ClSmallSkins ? BaseSize * 0.89f :
+											BaseSize;
 	BodyScale /= 64.0f;
 }
 
@@ -567,6 +571,12 @@ void CRenderTools::RenderTee6(const CAnimState *pAnim, const CTeeRenderInfo *pIn
 			float w = BaseSize;
 			float h = BaseSize / 2;
 
+			if(g_Config.m_ClSmallSkins)
+			{
+				w *= 0.89f;
+				h *= 0.89f;
+			}
+
 			int QuadOffset = 7;
 			if(Dir.x < 0 && pInfo->m_FeetFlipped)
 			{
@@ -588,6 +598,27 @@ void CRenderTools::RenderTee6(const CAnimState *pAnim, const CTeeRenderInfo *pIn
 			Graphics()->SetColor(pInfo->m_ColorFeet.r * ColorScale, pInfo->m_ColorFeet.g * ColorScale, pInfo->m_ColorFeet.b * ColorScale, Alpha);
 
 			Graphics()->TextureSet(OutLine == 1 ? pSkinTextures->m_FeetOutline : pSkinTextures->m_Feet);
+
+			const bool RenderAsWhite = pInfo->m_ClientId != -1 && ((g_Config.m_ClWhiteFeet == 1 && (pInfo->m_ClientId == GameClient()->m_aLocalIds[0] || pInfo->m_ClientId == GameClient()->m_aLocalIds[1])) ||
+										      (g_Config.m_ClWhiteFeet == 2 && pInfo->m_ClientId != GameClient()->m_aLocalIds[0] && pInfo->m_ClientId != GameClient()->m_aLocalIds[1]) ||
+										      (g_Config.m_ClWhiteFeet == 3));
+
+			if(RenderAsWhite && !GameClient()->m_aClients[pInfo->m_ClientId].m_SpecCharPresent)
+			{
+				const float WhiteFeetColor = 1.0f * ColorScale;
+				Graphics()->SetColor(WhiteFeetColor, WhiteFeetColor, WhiteFeetColor, Alpha);
+
+				CTeeRenderInfo WhiteFeetInfo;
+				const CSkin *pSkin = GameClient()->m_Skins.FindOrNullptr(g_Config.m_ClWhiteFeetSkin);
+				if(pSkin)
+				{
+					WhiteFeetInfo.m_OriginalRenderSkin = pSkin->m_OriginalSkin;
+					WhiteFeetInfo.m_ColorFeet = ColorRGBA(1.0f, 1.0f, 1.0f);
+					const CSkin::CSkinTextures *pWhiteFeetTextures = &WhiteFeetInfo.m_OriginalRenderSkin;
+					Graphics()->TextureSet(OutLine == 1 ? pWhiteFeetTextures->m_FeetOutline : pWhiteFeetTextures->m_Feet);
+				}
+			}
+
 			Graphics()->RenderQuadContainerAsSprite(m_TeeQuadContainerIndex, QuadOffset, Position.x + pFoot->m_X * AnimScale, Position.y + pFoot->m_Y * AnimScale, w / 64.f, h / 32.f);
 		}
 	}

@@ -302,6 +302,26 @@ public:
 	{
 		return false;
 	}
+
+	virtual void OnSelfDeath(bool Dummy)
+	{
+	}
+
+	/*
+	 * Called when the current focus of the window changes, for example when the user alt-tabs out of the game.
+	 * @param Focused `true` if the window is now focused, `false` if it lost focus.
+	 */
+	virtual void OnFocusChange(bool Focused)
+	{
+	}
+
+	/*
+	 * Called once 10 snapshots have been received after connecting to the server.
+	 * @param Conn sates whether the main player or the dummy connected.
+	 */
+	virtual void OnConnect(int Conn)
+	{
+	}
 };
 
 #endif

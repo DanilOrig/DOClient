@@ -57,6 +57,7 @@ class CGameConsole : public CComponent
 		vec2 m_MouseRelease = vec2(0.0f, 0.0f);
 		int m_CurSelStart = 0;
 		int m_CurSelEnd = 0;
+		std::string m_Selection;
 		bool m_HasSelection = false;
 		int m_NewLineCounter = 0;
 
@@ -213,7 +214,9 @@ public:
 	void Prompt(char (&aPrompt)[32]);
 
 	void Toggle(int Type);
+	void Close(); // EClient
 	bool IsActive() const { return m_ConsoleState != CONSOLE_CLOSED; }
+	void SetRemoteConsoleInput(const char *pText, bool Open = true);
 
 	void ForceUpdateRemoteCompletionSuggestions();
 };

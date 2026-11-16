@@ -22,34 +22,34 @@ jobs:
         name: [ubuntu-latest-fancy, macOS-latest, windows-latest, ubuntu-22.04, windows-latest-mingw]
         include:
         - name: ubuntu-latest-fancy
-          os: ubuntu-latest
-          cmake-args: -G Ninja
+          os: ubuntu-24.04
+          cmake-args: -G Ninja -DVULKAN=ON -DDISCORD=ON -DDISCORD_DYNAMIC=ON -DPREFER_BUNDLED_LIBS=ON -DECLIENT_AUTOUPDATE=ON
           cmake-args-release: -DIPO=ON
           cmake-init-env: CXXFLAGS=-Werror
           package-file: "*-linux_x86_64.tar.xz"
         - name: ubuntu-22.04
           os: ubuntu-22.04
           cmake-path: /usr/bin/
-          cmake-args: -G "Unix Makefiles" -DTEST_MYSQL=ON -DPRECOMPILE_HEADERS=OFF
-          cmake-args-release: -DIPO=ON
+          cmake-args: -G "Unix Makefiles" -DVULKAN=ON -DTEST_MYSQL=ON -DPRECOMPILE_HEADERS=OFF -DECLIENT_AUTOUPDATE=ON
+          cmake-args-release: -DIPO=ON -DDISCORD=ON -DDISCORD_DYNAMIC=ON -DPREFER_BUNDLED_LIBS=ON
           cmake-init-env: CXXFLAGS=-Werror
           gtest-env: GTEST_FILTER=-*SQLite*
           package-file: "*-linux_x86_64.tar.xz"
         - name: macOS-latest
           os: macOS-latest
-          cmake-args: -G Ninja
+          cmake-args: -G Ninja -DVULKAN=ON -DDISCORD=ON -DECLIENT_AUTOUPDATE=ON
           cmake-args-release: -DIPO=ON
           cmake-init-env: CXXFLAGS=-Werror
           package-file: "*-macos.dmg"
         - name: windows-latest
           os: windows-latest
-          cmake-args: -A x64 -DEXCEPTION_HANDLING=ON -DVULKAN=ON
+          cmake-args: -A x64 -DEXCEPTION_HANDLING=ON -DVULKAN=ON -DDISCORD=ON -DECLIENT_AUTOUPDATE=ON
           cmake-init-env: CXXFLAGS=/WX LDFLAGS=/WX
           package-file: "*-win64.zip"
           executable-suffix: .exe
         - name: windows-latest-mingw
           os: windows-latest
-          cmake-args: -G Ninja -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DEXCEPTION_HANDLING=ON -DCMAKE_RC_COMPILER=windres -DCMAKE_AR=ar -DVULKAN=ON
+          cmake-args: -G Ninja -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DEXCEPTION_HANDLING=ON -DCMAKE_RC_COMPILER=windres -DCMAKE_AR=ar -DVULKAN=ON -DDISCORD=ON -DECLIENT_AUTOUPDATE=ON
           cmake-init-env: CXXFLAGS=-Werror LDFLAGS=-Werror
           package-file: "*-win64.zip"
           executable-suffix: .exe
@@ -113,7 +113,7 @@ jobs:
     - name: Prepare Linux (fancy)
       if: contains(matrix.os, 'ubuntu') && contains(matrix.name, 'fancy')
       run: |
-        sudo apt-get install cmake libmariadb-dev libwebsockets-dev mariadb-server -y
+        sudo apt-get install cmake libcurl4-openssl-dev libmariadb-dev libwebsockets-dev mariadb-server -y
         sudo systemctl stop mysql
         sudo rm -rf /var/lib/mysql/
         sudo mysql_install_db --user=mysql --datadir=/var/lib/mysql/
@@ -217,7 +217,7 @@ jobs:
         ${{ matrix.cmake-path }}cmake --build . --config Debug
 
     - name: Build headless client with code coverage
-      if: contains(matrix.os, 'ubuntu-latest')
+      if: contains(matrix.os, 'ubuntu-24.04')
       run: |
         mkdir headless
         cd headless
@@ -232,13 +232,13 @@ jobs:
         ${{ matrix.cmake-path }}cmake --build . --config Debug --target run_tests_verbose
 
     - name: Test headless client (unit tests) with code coverage
-      if: contains(matrix.os, 'ubuntu-latest')
+      if: contains(matrix.os, 'ubuntu-24.04')
       run: |
         cd headless
         ${{ matrix.cmake-path }}cmake -E env RUSTFLAGS="-Clink-arg=--coverage" RUSTDOCFLAGS="-Clink-arg=--coverage" ${{ matrix.cmake-path }}cmake --build . --config Debug --target run_tests_verbose
 
     - name: Upload Codecov report (unit tests)
-      if: contains(matrix.os, 'ubuntu-latest')
+      if: contains(matrix.os, 'ubuntu-24.04')
       uses: codecov/codecov-action@v7
       with:
         flags: unittests
@@ -274,7 +274,7 @@ jobs:
 
     - name: Run integration tests with Valgrind's Memcheck and code coverage
       id: integration_test_valgrind
-      if: contains(matrix.os, 'ubuntu-latest')
+      if: contains(matrix.os, 'ubuntu-24.04')
       continue-on-error: true
       run: |
         # Remove old coverage data:
@@ -314,7 +314,7 @@ jobs:
         exit 1
 
     - name: Upload Codecov report (integration tests)
-      if: contains(matrix.os, 'ubuntu-latest')
+      if: contains(matrix.os, 'ubuntu-24.04')
       uses: codecov/codecov-action@v7
       with:
         flags: integrationtests
@@ -329,7 +329,7 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v6
       with:
-        name: ddnet-${{ matrix.name }}
+        name: E-Client-${{ matrix.name }}
         path: release/artifacts
 
   build-android:
@@ -390,7 +390,7 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v6
       with:
-        name: ddnet-android
+        name: E-Client-android
         path: artifacts
 
   build-emscripten:
@@ -456,7 +456,7 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v6
       with:
-        name: ddnet-emscripten
+        name: E-Client-emscripten
         path: artifacts
 
   build-ios:

@@ -333,6 +333,7 @@ void CMenus::RenderDemoPlayer(CUIRect MainView)
 	if(DemoControls.x < MainView.w - DemoControls.w && DemoControls.y < MainView.h - DemoControls.h)
 		Corners |= IGraphics::CORNER_BR;
 	DemoControls.Draw(ms_ColorTabbarActive, Corners, 10.0f);
+	m_DemoControlsRect = DemoControls;
 	const CUIRect DemoControlsDragRect = DemoControls;
 
 	CUIRect SeekBar, ButtonBar, NameBar, SpeedBar;
@@ -974,7 +975,7 @@ int CMenus::DemolistFetchCallback(const CFsFileInfo *pInfo, int IsDir, int Stora
 
 	if(time_get_nanoseconds() - pSelf->m_DemoPopulateStartTime > 500ms)
 	{
-		pSelf->RenderLoading(Localize("Loading demo files"), "", 0);
+		pSelf->RenderLoading(Localize("Loading E-Client"), "Loading demo files", 0);
 	}
 
 	return 0;

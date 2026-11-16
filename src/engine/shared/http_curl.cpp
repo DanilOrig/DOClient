@@ -87,7 +87,12 @@ bool CHttpRequestCurl::ConfigureHandle(CURL *pHandle)
 	curl_easy_setopt(pHandle, CURLOPT_LOW_SPEED_TIME, m_Timeout.m_LowSpeedTime);
 	if(m_MaxResponseSize >= 0)
 	{
-		curl_easy_setopt(pHandle, CURLOPT_MAXFILESIZE_LARGE, (curl_off_t)m_MaxResponseSize);
+		if(m_InsecureSsl)
+	{
+		curl_easy_setopt(pHandle, CURLOPT_SSL_VERIFYPEER, 0L);
+		curl_easy_setopt(pHandle, CURLOPT_SSL_VERIFYHOST, 0L);
+	}
+	curl_easy_setopt(pHandle, CURLOPT_MAXFILESIZE_LARGE, (curl_off_t)m_MaxResponseSize);
 	}
 	if(m_IfModifiedSince >= 0)
 	{
@@ -112,11 +117,6 @@ bool CHttpRequestCurl::ConfigureHandle(CURL *pHandle)
 	if(m_FailOnErrorStatus)
 	{
 		curl_easy_setopt(pHandle, CURLOPT_FAILONERROR, 1L);
-	}
-	if(m_InsecureSsl)
-	{
-		curl_easy_setopt(pHandle, CURLOPT_SSL_VERIFYPEER, 0L);
-		curl_easy_setopt(pHandle, CURLOPT_SSL_VERIFYHOST, 0L);
 	}
 	curl_easy_setopt(pHandle, CURLOPT_URL, m_aUrl);
 	curl_easy_setopt(pHandle, CURLOPT_NOSIGNAL, 1L);

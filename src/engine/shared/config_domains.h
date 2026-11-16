@@ -1,0 +1,20 @@
+// This file can be included several times.
+
+#ifndef CONFIG_DOMAIN
+#error "CONFIG_DOMAIN macro not defined"
+#define CONFIG_DOMAIN(Name, ConfigPath, HasVars) ;
+#endif
+
+CONFIG_DOMAIN(DDNET, "settings_ddnet.cfg", true)
+CONFIG_DOMAIN(ENTITY, "settings_entity.cfg", true)
+// EClient
+CONFIG_DOMAIN(ENTITYBINDHWEEL, "entity_bindwheel.cfg", false)
+CONFIG_DOMAIN(ENTITYPLAYERACTIONS, "entity_playeractions.cfg", false)
+CONFIG_DOMAIN(ENTITYMAPFINISHES, "entity_map_finishes.cfg", false)
+CONFIG_DOMAIN(ENTITYMAPPREVIEWS, "entity_map_previews.cfg", false)
+CONFIG_DOMAIN(ENTITYMODACTIONS, "entity_mod_actions.cfg", false)
+CONFIG_DOMAIN(ENTITYHUDLAYOUT, "entity_hud_layout.cfg", false)
+CONFIG_DOMAIN(ECLIENTWARLIST, "entity_warlist.cfg", false)
+// T-Client
+CONFIG_DOMAIN(TCLIENTPROFILES, "tclient_profiles.cfg", false)
+CONFIG_DOMAIN(TCLIENTCHATBINDS, "tclient_chatbinds.cfg", false)

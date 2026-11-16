@@ -3,6 +3,7 @@
 #include "scoreboard.h"
 
 #include <base/dbg.h>
+#include <base/str.h>
 #include <base/time.h>
 
 #include <engine/console.h>
@@ -12,18 +13,59 @@
 #include <engine/shared/config.h>
 #include <engine/textrender.h>
 
+#include <generated/client_data.h>
 #include <generated/client_data7.h>
 #include <generated/protocol.h>
 
 #include <game/client/animstate.h>
-
-static bool RenderClientTagIcon(IGraphics *pGraphics, CTextCursor *pCursor, const char *pTag);
 #include <game/client/components/countryflags.h>
 #include <game/client/components/motd.h>
 #include <game/client/components/statboard.h>
 #include <game/client/gameclient.h>
 #include <game/client/ui.h>
 #include <game/localization.h>
+
+
+namespace {
+
+IGraphics::CTextureHandle *ClientTagTexture(IGraphics *pGraphics, const char *pTag)
+{
+	static IGraphics::CTextureHandle s_Textures[5];
+	static const char *s_apTags[5] = {"[DO]", "[DD]", "[RC]", "[EC]", "[BC]"};
+	static const char *s_apFiles[5] = {"clienttags/do.png", "clienttags/dd.png", "clienttags/rc.png", "clienttags/ec.png", "clienttags/bc.png"};
+	for(int i = 0; i < 5; i++)
+	{
+		if(str_comp(pTag, s_apTags[i]) != 0)
+			continue;
+		if(!s_Textures[i].IsValid())
+			s_Textures[i] = pGraphics->LoadTexture(s_apFiles[i], IStorage::TYPE_ALL);
+		return &s_Textures[i];
+	}
+	return nullptr;
+}
+
+bool RenderClientTagIcon(IGraphics *pGraphics, CTextCursor *pCursor, const char *pTag)
+{
+	IGraphics::CTextureHandle *pTexture = ClientTagTexture(pGraphics, pTag);
+	if(pTexture == nullptr)
+		return false;
+	const float Size = pCursor->m_FontSize;
+	if((pCursor->m_Flags & TEXTFLAG_RENDER) != 0)
+	{
+		pGraphics->TextureSet(*pTexture);
+		pGraphics->QuadsBegin();
+		pGraphics->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+		IGraphics::CQuadItem Quad(pCursor->m_X, pCursor->m_Y, Size, Size);
+		pGraphics->QuadsDrawTL(&Quad, 1);
+		pGraphics->QuadsEnd();
+		pGraphics->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+	pCursor->m_X += Size + Size * 0.18f;
+	return true;
+}
+
+} // namespace
+
 
 // Horizontal spacing of the scoreboard contents, both to its edges and between columns
 static constexpr float MARGIN = 10.0f;
@@ -42,6 +84,39 @@ CScoreboard::CScoreboard()
 {
 	CScoreboard::OnReset();
 }
+
+namespace {
+
+// draws the client tag icon (or its text fallback) and returns the used width
+float DrawClientTagIcon(IGraphics *pGraphics, ITextRender *pTextRender, float X, float Y, float FontSize, const char *pTag, float Alpha)
+{
+	IGraphics::CTextureHandle *pTexture = ClientTagTexture(pGraphics, pTag);
+	if(pTexture != nullptr && pTexture->IsValid())
+	{
+		pGraphics->TextureSet(*pTexture);
+		pGraphics->QuadsBegin();
+		pGraphics->SetColor(1.0f, 1.0f, 1.0f, Alpha);
+		IGraphics::CQuadItem Quad(X, Y, FontSize, FontSize);
+		pGraphics->QuadsDrawTL(&Quad, 1);
+		pGraphics->QuadsEnd();
+		return FontSize + FontSize * 0.18f;
+	}
+	ColorRGBA TagColor(0.65f, 0.65f, 0.65f, Alpha);
+	if(str_comp(pTag, "[DO]") == 0)
+		TagColor = ColorRGBA(0.10f, 0.24f, 0.60f, Alpha);
+	else if(str_comp(pTag, "[EC]") == 0)
+		TagColor = ColorRGBA(1.0f, 0.45f, 0.85f, Alpha);
+	else if(str_comp(pTag, "[RC]") == 0)
+		TagColor = ColorRGBA(0.4f, 0.6f, 1.0f, Alpha);
+	else if(str_comp(pTag, "[BC]") == 0)
+		TagColor = ColorRGBA(1.0f, 0.65f, 0.2f, Alpha);
+	pTextRender->TextColor(TagColor);
+	pTextRender->Text(X, Y, FontSize, pTag);
+	pTextRender->TextColor(pTextRender->DefaultTextColor());
+	return pTextRender->TextWidth(FontSize, pTag) + FontSize * 0.2f;
+}
+
+} // namespace
 
 void CScoreboard::SetUiMousePos(vec2 Pos)
 {
@@ -134,8 +209,8 @@ void CScoreboard::ResetTexts()
 	{
 		Player.m_Score.Reset(TextRender());
 		Player.m_ScoreMillis.Reset(TextRender());
+		Player.m_ClientId.Reset(TextRender());
 		Player.m_Name.Reset(TextRender());
-		Player.m_Tag.Reset(TextRender());
 		Player.m_ReadyMark.Reset(TextRender());
 		Player.m_Clan.Reset(TextRender());
 		Player.m_Ping.Reset(TextRender());
@@ -412,30 +487,23 @@ void CScoreboard::RenderSpectators(CUIRect Spectators)
 				}
 			}
 
-			if(ClientData.m_AuthLevel)
+			// DOClient client tags
+			if(g_Config.m_EcClientTypes && ClientData.m_aClientTag[0] != '\0')
 			{
-				TextRender()->TextColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClAuthedPlayerColor)));
-			}
-
-			if(g_Config.m_EcClientTypes)
-			{
-				const char *pTag = str_comp(ClientData.m_aClientTag, "[C]") == 0 ? "" : ClientData.m_aClientTag;
+				const char *pTag = ClientData.m_aClientTag;
 				ColorRGBA TagColor(0.65f, 0.65f, 0.65f, 1.0f);
+				if(g_Config.m_EcClientTypesBestClient && GameClient()->m_aBestClientTag[pInfo->m_ClientId])
+				{
+					pTag = "[BC]";
+					TagColor = ColorRGBA(1.0f, 0.65f, 0.2f, 1.0f);
+				}
 				if(str_comp(pTag, "[DO]") == 0)
 					TagColor = ColorRGBA(0.10f, 0.24f, 0.60f, 1.0f);
 				else if(str_comp(pTag, "[EC]") == 0)
 					TagColor = ColorRGBA(1.0f, 0.45f, 0.85f, 1.0f);
 				else if(str_comp(pTag, "[RC]") == 0)
 					TagColor = ColorRGBA(0.4f, 0.6f, 1.0f, 1.0f);
-				else if(str_comp(pTag, "[C]") == 0)
-					TagColor = ColorRGBA(0.6f, 0.75f, 0.85f, 1.0f);
-				else if(g_Config.m_EcClientTypesBestClient && GameClient()->m_aBestClientTag[pInfo->m_ClientId])
-				{
-					pTag = "[BC]";
-					TagColor = ColorRGBA(1.0f, 0.65f, 0.2f, 1.0f);
-				}
-
-				if(pTag != nullptr && pTag[0] != '\0' && !RenderClientTagIcon(Graphics(), pCursor, pTag))
+				if(!RenderClientTagIcon(Graphics(), pCursor, pTag))
 				{
 					TextRender()->TextColor(TagColor);
 					TextRender()->TextEx(pCursor, pTag);
@@ -444,8 +512,15 @@ void CScoreboard::RenderSpectators(CUIRect Spectators)
 				}
 			}
 
-			if(g_Config.m_EcWarListColorsSpectator && GameClient()->m_WarList.IsWar(pInfo->m_ClientId))
-				TextRender()->TextColor(GameClient()->m_WarList.ColorForClient(pInfo->m_ClientId));
+			if(ClientData.m_AuthLevel)
+			{
+				TextRender()->TextColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClAuthedPlayerColor)));
+			}
+			if(ClientData.m_Friend)
+			{
+				TextRender()->TextColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClFriendColor)));
+			}
+
 			TextRender()->TextEx(pCursor, ClientData.m_aName);
 			TextRender()->TextColor(TextRender()->DefaultTextColor());
 		};
@@ -519,72 +594,6 @@ void CScoreboard::RenderSpectators(CUIRect Spectators)
 	}
 }
 
-// Returns the icon texture for a client tag that is drawn as an image instead of text.
-static IGraphics::CTextureHandle *ClientTagTexture(IGraphics *pGraphics, const char *pTag)
-{
-	static IGraphics::CTextureHandle s_RcTagTexture;
-	static IGraphics::CTextureHandle s_BcTagTexture;
-	static IGraphics::CTextureHandle s_EcTagTexture;
-	static IGraphics::CTextureHandle s_DoTagTexture;
-	static IGraphics::CTextureHandle s_DdTagTexture;
-	if(str_comp(pTag, "[DO]") == 0)
-	{
-		if(!s_DoTagTexture.IsValid())
-			s_DoTagTexture = pGraphics->LoadTexture("clienttags/do.png", IStorage::TYPE_ALL);
-		return &s_DoTagTexture;
-	}
-
-	if(str_comp(pTag, "[DD]") == 0)
-	{
-		if(!s_DdTagTexture.IsValid())
-			s_DdTagTexture = pGraphics->LoadTexture("clienttags/dd.png", IStorage::TYPE_ALL);
-		return &s_DdTagTexture;
-	}
-
-
-
-	if(str_comp(pTag, "[RC]") == 0)
-	{
-		if(!s_RcTagTexture.IsValid())
-			s_RcTagTexture = pGraphics->LoadTexture("clienttags/rc.png", IStorage::TYPE_ALL);
-		return &s_RcTagTexture;
-	}
-	if(str_comp(pTag, "[EC]") == 0)
-	{
-		if(!s_EcTagTexture.IsValid())
-			s_EcTagTexture = pGraphics->LoadTexture("clienttags/ec.png", IStorage::TYPE_ALL);
-		return &s_EcTagTexture;
-	}
-	if(str_comp(pTag, "[BC]") == 0)
-	{
-		if(!s_BcTagTexture.IsValid())
-			s_BcTagTexture = pGraphics->LoadTexture("clienttags/bc.png", IStorage::TYPE_ALL);
-		return &s_BcTagTexture;
-	}
-	return nullptr;
-}
-
-// Draws the client tag as an image instead of text (Rushie/BestClient logos).
-static bool RenderClientTagIcon(IGraphics *pGraphics, CTextCursor *pCursor, const char *pTag)
-{
-	IGraphics::CTextureHandle *pTexture = ClientTagTexture(pGraphics, pTag);
-	if(pTexture == nullptr)
-		return false;
-
-	const float Size = pCursor->m_FontSize;
-	if((pCursor->m_Flags & TEXTFLAG_RENDER) != 0)
-	{
-		pGraphics->TextureSet(*pTexture);
-		pGraphics->QuadsBegin();
-		pGraphics->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
-		IGraphics::CQuadItem Quad(pCursor->m_X, pCursor->m_Y, Size, Size);
-		pGraphics->QuadsDrawTL(&Quad, 1);
-		pGraphics->QuadsEnd();
-		pGraphics->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
-	}
-	pCursor->m_X += Size + Size * 0.18f;
-	return true;
-}
 void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart, int CountEnd, CScoreboardRenderState &State, int NumPlayersForSize)
 {
 	dbg_assert(Team == TEAM_RED || Team == TEAM_BLUE, "Team invalid");
@@ -607,6 +616,7 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 	float Spacing;
 	float RoundRadius;
 	float FontSize;
+
 	if(NumPlayers <= 8)
 	{
 		LineHeight = 30.0f;
@@ -774,7 +784,18 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				}
 				if(NextDDTeam != DDTeam)
 					TeamRectCorners |= IGraphics::CORNER_B;
+
 				RowAndSpacing.Draw(Color, TeamRectCorners, RoundRadius);
+
+				if(g_Config.m_ClScoreboardOutlineTeams)
+				{
+					int TeamRectSides = IGraphics::SIDE_L | IGraphics::SIDE_R;
+					if(TeamRectCorners & IGraphics::CORNER_T)
+						TeamRectSides |= IGraphics::SIDE_T;
+					if(TeamRectCorners & IGraphics::CORNER_B)
+						TeamRectSides |= IGraphics::SIDE_B;
+					RowAndSpacing.DrawSpecificOutline(ColorRGBA(0.7f, 0.7f, 0.7f, 1.0f), TeamRectCorners, TeamRectSides, RoundRadius);
+				}
 
 				CurrentDDTeamSize++;
 
@@ -906,6 +927,8 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				Graphics()->QuadsEnd();
 			}
 
+			const bool Paused = ClientData.m_Paused || ClientData.m_Spec;
+
 			// skin
 			if(RenderDead)
 			{
@@ -925,7 +948,13 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 			{
 				CTeeRenderInfo TeeInfo = ClientData.m_RenderInfo;
 				TeeInfo.m_Size *= TeeSizeMod;
-				RenderTools()->RenderIdleTeeAtCenter(&TeeInfo, vec2(TeeOffset + TeeLength / 2, Row.y + Row.h / 2.0f));
+				vec2 OffsetToMid;
+				CRenderTools::GetRenderTeeOffsetToRenderedTee(CAnimState::GetIdle(), &TeeInfo, OffsetToMid);
+				const vec2 TeeRenderPos = vec2(TeeOffset + TeeLength / 2, Row.y + Row.h / 2.0f + OffsetToMid.y);
+				if(Paused)
+					RenderTools()->RenderTee(CAnimState::GetSpec(), &TeeInfo, EMOTE_BLINK, vec2(1.0f, 0.0f), TeeRenderPos);
+				else
+					RenderTools()->RenderTee(CAnimState::GetIdle(), &TeeInfo, EMOTE_NORMAL, vec2(1.0f, 0.0f), TeeRenderPos);
 
 				if(m_MouseUnlocked)
 				{
@@ -936,102 +965,135 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 
 			// name
 			{
-				const char *pTag = nullptr;
-				ColorRGBA TagColor(0.65f, 0.65f, 0.65f, TextColor.a);
-				if(g_Config.m_EcClientTypes)
+				str_copy(aBuf, ClientData.m_aName);
+
+				float NameX = NameOffset;
+				float NameWidth = NameLength;
+				if(g_Config.m_ClSpectatePrefix && Paused)
 				{
-					pTag = str_comp(ClientData.m_aClientTag, "[C]") == 0 ? "" : ClientData.m_aClientTag;
-					if(str_comp(pTag, "[DO]") == 0)
-					TagColor = ColorRGBA(0.10f, 0.24f, 0.60f, TextColor.a);
-				else if(str_comp(pTag, "[EC]") == 0)
-						TagColor = ColorRGBA(1.0f, 0.45f, 0.85f, TextColor.a);
-					else if(str_comp(pTag, "[RC]") == 0)
-						TagColor = ColorRGBA(0.4f, 0.6f, 1.0f, TextColor.a);
-					else if(str_comp(pTag, "[C]") == 0)
-						TagColor = ColorRGBA(0.6f, 0.75f, 0.85f, TextColor.a);
-					else if(g_Config.m_EcClientTypesBestClient && GameClient()->m_aBestClientTag[pInfo->m_ClientId])
-					{
-						pTag = "[BC]";
-						TagColor = ColorRGBA(1.0f, 0.65f, 0.2f, TextColor.a);
-					}
+					char aPrefix[64];
+					str_format_prefix(aPrefix, g_Config.m_ClSpecPrefix);
+					TextRender()->TextColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClSpecColor)));
+					TextRender()->Text(NameX, TextY, FontSize, aPrefix);
+					TextRender()->TextColor(TextColor);
+
+					const float PrefixWidth = TextRender()->TextWidth(FontSize, aPrefix);
+					NameX += PrefixWidth;
+					NameWidth -= PrefixWidth;
 				}
 
-				float TagWidth = 0.0f;
-				if(pTag)
-				{
-					IGraphics::CTextureHandle *pTagTexture = ClientTagTexture(Graphics(), pTag);
-					if(pTagTexture != nullptr)
-					{
-						Graphics()->TextureSet(*pTagTexture);
-						Graphics()->QuadsBegin();
-						Graphics()->SetColor(1.0f, 1.0f, 1.0f, TextColor.a);
-						const float TagY = Row.y + (Row.h - FontSize) / 2.0f;
-						IGraphics::CQuadItem Quad(NameOffset + 7.0f, TagY, FontSize, FontSize);
-						Graphics()->QuadsDrawTL(&Quad, 1);
-						Graphics()->QuadsEnd();
-						Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
-						TagWidth = FontSize + 11.0f;
-					}
-					else
-					{
-						Player.m_Tag.Update(TextRender(), pTag, FontSize);
-						Player.m_Tag.Render(TextRender(), vec2(NameOffset, TextY), TagColor);
-						TagWidth = Player.m_Tag.Width() + 2.0f;
-					}
-				}
+				// The authed color applies to the client id as well, the name-only
+				// colors below do not.
+				ColorRGBA IdColor = TextColor;
+				if(ClientData.m_AuthLevel)
+					IdColor = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClAuthedPlayerColor));
 
 				if(g_Config.m_ClShowIds)
 				{
 					char aClientId[16];
 					GameClient()->FormatClientId(pInfo->m_ClientId, aClientId, EClientIdFormat::INDENT_AUTO);
-					str_copy(aBuf, aClientId);
-					str_append(aBuf, ClientData.m_aName);
+					Player.m_ClientId.Update(TextRender(), aClientId, FontSize);
+					Player.m_ClientId.Render(TextRender(), vec2(NameX, TextY), IdColor);
+
+					NameX += Player.m_ClientId.Width();
+					NameWidth -= Player.m_ClientId.Width();
 				}
 				else
 				{
-					str_copy(aBuf, ClientData.m_aName);
+					Player.m_ClientId.Reset(TextRender());
 				}
-				Player.m_Name.Update(TextRender(), aBuf, FontSize, std::max(0.0f, NameLength - TagWidth), TEXTFLAG_RENDER | TEXTFLAG_ELLIPSIS_AT_END);
 
-				ColorRGBA NameColor = TextColor;
-				if(ClientData.m_AuthLevel)
+				if(g_Config.m_EcClientTypes && ClientData.m_aClientTag[0] != '\0')
 				{
-					NameColor = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClAuthedPlayerColor));
+					const char *pTag = ClientData.m_aClientTag;
+					if(g_Config.m_EcClientTypesBestClient && GameClient()->m_aBestClientTag[pInfo->m_ClientId])
+						pTag = "[BC]";
+					const float TagWidth = DrawClientTagIcon(Graphics(), TextRender(), NameX, TextY, FontSize, pTag, TextColor.a);
+					NameX += TagWidth;
+					NameWidth -= TagWidth;
 				}
-				if(g_Config.m_EcWarListColorsTab && GameClient()->m_WarList.IsWar(pInfo->m_ClientId))
-					NameColor = GameClient()->m_WarList.ColorForClient(pInfo->m_ClientId).WithAlpha(TextColor.a);
+
+				ColorRGBA NameColor = IdColor;
 				if(GameClient()->m_Gradient.NamesEnabled() && GameClient()->m_Gradient.AppliesTo(pInfo->m_ClientId))
 					NameColor = GameClient()->m_Gradient.ColorFor(pInfo->m_ClientId).WithAlpha(TextColor.a);
-				Player.m_Name.Render(TextRender(), vec2(NameOffset + TagWidth, TextY), NameColor);
-				if(g_Config.m_EcWarListShowReason && GameClient()->m_WarList.IsWar(pInfo->m_ClientId) && GameClient()->m_WarList.ReasonForClient(pInfo->m_ClientId)[0] != '\0')
+				if(g_Config.m_ClScoreboardFriendColor && ClientData.m_Friend)
+					NameColor = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClFriendColor));
+
+				if(pInfo->m_ClientId >= 0 && g_Config.m_ClWarList)
 				{
-					char aReason[160];
-					str_format(aReason, sizeof(aReason), " — %s", GameClient()->m_WarList.ReasonForClient(pInfo->m_ClientId));
-					CUIRect ReasonRect = Row;
-					ReasonRect.x = NameOffset + TagWidth + Player.m_Name.Width() + 2.0f;
-					ReasonRect.y = TextY;
-					ReasonRect.h = FontSize;
-					TextRender()->TextColor(TextRender()->DefaultTextColor());
-					Ui()->DoLabel(&ReasonRect, aReason, FontSize * 0.8f, TEXTALIGN_ML);
+					CWarType *pType = GameClient()->m_WarList.GetPriorityType(pInfo->m_ClientId);
+					if(pType && pType->m_ScoreboardColor)
+						NameColor = GameClient()->m_WarList.GetNameplateColor(pInfo->m_ClientId);
 				}
+
+				float Alpha = TextColor.a;
+				if(g_Config.m_ClDoAfkColors && ClientData.m_Afk)
+					Alpha = 0.5f;
+
+				NameColor.a = Alpha;
+
+				Player.m_Name.Update(TextRender(), aBuf, FontSize, NameWidth, TEXTFLAG_RENDER | TEXTFLAG_ELLIPSIS_AT_END);
+				Player.m_Name.Render(TextRender(), vec2(NameX, TextY), NameColor);
 
 				// ready / watching
 				if(Client()->IsSixup() && Client()->m_TranslationContext.m_aClients[pInfo->m_ClientId].m_PlayerFlags7 & protocol7::PLAYERFLAG_READY)
 				{
 					Player.m_ReadyMark.Update(TextRender(), "✓", FontSize);
-					Player.m_ReadyMark.Render(TextRender(), vec2(NameOffset + TagWidth + Player.m_Name.Width(), TextY), ColorRGBA(0.1f, 1.0f, 0.1f, TextColor.a));
+					Player.m_ReadyMark.Render(TextRender(), vec2(NameX + Player.m_Name.Width(), TextY), ColorRGBA(0.1f, 1.0f, 0.1f, TextColor.a));
+				}
+
+				if(pInfo->m_ClientId >= 0)
+				{
+					float MuteSize = 34.0f * TeeSizeMod;
+					bool Muted = GameClient()->m_WarList.m_WarPlayers[pInfo->m_ClientId].m_IsMuted;
+					if(Muted)
+					{
+						ColorRGBA Color = GameClient()->m_WarList.m_pWarTypeMute->m_Color;
+
+						Graphics()->BlendNormal();
+						Graphics()->TextureSet(g_pData->m_aImages[IMAGE_MUTED_ICON].m_Id);
+						Graphics()->QuadsBegin();
+						Graphics()->SetColor(Color);
+
+						float x = NameX + Player.m_Name.Width() + FontSize / 2.0f;
+						float y = Row.y + (Row.h - MuteSize) / 2.0f;
+
+						IGraphics::CQuadItem QuadItem(x, y, MuteSize, MuteSize);
+						Graphics()->QuadsDrawTL(&QuadItem, 2);
+						Graphics()->QuadsEnd();
+					}
+					if(GameClient()->m_aClients[pInfo->m_ClientId].m_IsEntityClientUser && g_Config.m_ClClientUsersScoreboard)
+					{
+						Graphics()->BlendNormal();
+						Graphics()->TextureSet(g_pData->m_aImages[IMAGE_GENERIC_GHOST].m_Id);
+						Graphics()->QuadsBegin();
+						Graphics()->SetColor(ColorRGBA(1, 1, 1));
+
+						float x = NameX + Player.m_Name.Width() + FontSize / 2.0f;
+						if(Muted)
+							x += MuteSize + FontSize / 2.0f;
+						float y = Row.y + (Row.h - MuteSize) / 2.0f;
+
+						IGraphics::CQuadItem QuadItem(x, y, MuteSize, MuteSize);
+						Graphics()->QuadsDrawTL(&QuadItem, 2);
+						Graphics()->QuadsEnd();
+					}
 				}
 			}
 
 			// clan
 			{
 				ColorRGBA ClanColor = TextColor;
+				if(GameClient()->m_Gradient.ClansEnabled() && GameClient()->m_Gradient.AppliesTo(pInfo->m_ClientId))
+					ClanColor = GameClient()->m_Gradient.ColorFor(pInfo->m_ClientId).WithAlpha(TextColor.a);
 				if(GameClient()->m_aLocalIds[g_Config.m_ClDummy] >= 0 && str_comp(ClientData.m_aClan, GameClient()->m_aClients[GameClient()->m_aLocalIds[g_Config.m_ClDummy]].m_aClan) == 0)
 				{
 					ClanColor = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClSameClanColor));
 				}
-				if(GameClient()->m_Gradient.ClansEnabled() && GameClient()->m_Gradient.AppliesTo(pInfo->m_ClientId))
-					ClanColor = GameClient()->m_Gradient.ColorFor(pInfo->m_ClientId).WithAlpha(TextColor.a);
+
+				// TClient
+				if(pInfo->m_ClientId >= 0 && g_Config.m_ClWarList && GameClient()->m_WarList.GetClanType(pInfo->m_ClientId) && GameClient()->m_WarList.GetClanType(pInfo->m_ClientId)->m_ScoreboardColor)
+					ClanColor = GameClient()->m_WarList.GetClanColor(pInfo->m_ClientId);
 
 				Player.m_Clan.Update(TextRender(), ClientData.m_aClan, FontSize, ClanLength, TEXTFLAG_RENDER | TEXTFLAG_ELLIPSIS_AT_END);
 				Player.m_Clan.Render(TextRender(), vec2(ClanOffset + (ClanLength - std::min(Player.m_Clan.Width(), ClanLength)) / 2.0f, TextY), ClanColor);
@@ -1148,9 +1210,19 @@ void CScoreboard::RenderRecordingNotification(float x)
 	constexpr float Gap = 5.0f;
 
 	CUIRect Rect = {x, 0.0f, TextRender()->TextWidth(FontSize, aBuf) + 30.0f, 25.0f};
-	Rect.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.4f), IGraphics::CORNER_B, ROUNDING);
-	Rect.VSplitLeft(CircleSize, nullptr, &Rect);
-	Rect.VSplitRight(Gap, &Rect, nullptr);
+
+	const CUIRect *pUiScreen = Ui()->Screen();
+	const vec2 HudSize(300.0f * Graphics()->ScreenAspect(), 300.0f);
+	const vec2 Scale(pUiScreen->w / HudSize.x, pUiScreen->h / HudSize.y);
+
+	vec2 FPSPos = GameClient()->m_Hud.FpsPos() * Scale;
+
+	if(Rect.x + Rect.w > FPSPos.x)
+		return; // don't render if it would overlap with the FPS counter
+
+	Rect.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.4f), IGraphics::CORNER_B, 7.5f);
+	Rect.VSplitLeft(10.0f, nullptr, &Rect);
+	Rect.VSplitRight(5.0f, &Rect, nullptr);
 
 	CUIRect Circle;
 	Rect.VSplitLeft(CircleSize, &Circle, &Rect);
@@ -1168,6 +1240,8 @@ void CScoreboard::OnRender()
 
 	if(!IsActive())
 	{
+		GameClient()->m_Hud.HudLayout().ClearOccluder(); // EClient
+
 		// lock mouse if scoreboard was opened by being dead or game pause
 		if(m_MouseUnlocked)
 		{
@@ -1201,6 +1275,11 @@ void CScoreboard::OnRender()
 	const float ScoreboardWidth = !Teams && NumPlayers <= 16 ? ScoreboardSmallWidth : 750.0f;
 
 	CUIRect Scoreboard = {(Screen.w - ScoreboardWidth) / 2.0f, 75.0f, ScoreboardWidth, 355.0f + TitleHeight};
+
+	// EClient: handed to the HUD layout so elements that end up underneath it can step aside. The
+	// ui screen is twice the height of the HUD's, so the rect is halved on the way across.
+	GameClient()->m_Hud.HudLayout().SetOccluder(
+		vec2(Scoreboard.x * 0.5f, Scoreboard.y * 0.5f), vec2(Scoreboard.w * 0.5f, Scoreboard.h * 0.5f));
 	CScoreboardRenderState RenderState{};
 
 	if(Teams)
@@ -1343,7 +1422,6 @@ void CScoreboard::OnRender()
 		RenderGoals(Goals);
 	}
 	RenderSpectators(Spectators);
-
 	if(!m_MouseUnlocked)
 	{
 		constexpr float MouseHintSize = 26.0f;
@@ -1351,7 +1429,22 @@ void CScoreboard::OnRender()
 		RenderMouseHint(MouseHint);
 	}
 
-	RenderRecordingNotification((Screen.w / 7) * 4 + 10);
+	float NotificationX = (Screen.w / 7) * 4 + 10;
+
+	const CUIRect *pUiScreen = Ui()->Screen();
+	const vec2 HudSize(300.0f * Graphics()->ScreenAspect(), 300.0f);
+	const vec2 Scale(pUiScreen->w / HudSize.x, pUiScreen->h / HudSize.y);
+
+	float IslandX = GameClient()->m_Hud.IslandPos().x * Scale.x;
+	float IslandW = GameClient()->m_Hud.IslandSize().x * Scale.x;
+
+	if(IslandX > 0.0f && IslandW > 0.0f)
+	{
+		if(NotificationX < IslandX + IslandW + 10.0f)
+			NotificationX = IslandX + IslandW + 10.0f;
+	}
+
+	RenderRecordingNotification(NotificationX);
 
 	if(!GameClient()->m_Menus.IsActive() && !GameClient()->m_Chat.IsActive())
 	{
@@ -1377,7 +1470,8 @@ bool CScoreboard::IsActive() const
 	if(GameClient()->m_Snap.m_pLocalInfo && !GameClient()->m_Snap.m_SpecInfo.m_Active)
 	{
 		// we are not a spectator, check if we are dead and the game isn't paused
-		if(!GameClient()->m_Snap.m_pLocalCharacter && g_Config.m_ClScoreboardOnDeath &&
+		// EClient: playing a practice tee is not being dead, whatever the server has us as
+		if(!GameClient()->m_Snap.m_pLocalCharacter && !GameClient()->m_LocalPractice.IsControlling() && g_Config.m_ClScoreboardOnDeath &&
 			!(pGameInfoObj && pGameInfoObj->m_GameStateFlags & GAMESTATEFLAG_PAUSED))
 			return true;
 	}
@@ -1475,11 +1569,17 @@ CUi::EPopupMenuFunctionResult CScoreboard::CScoreboardPopupContext::Render(void 
 		Container.VSplitLeft(ActionSpacing, nullptr, &Container);
 		Container.VSplitLeft(ActionSize, &Action, &Container);
 
-		if(pUi->DoButton_FontIcon(&pPopupContext->m_MuteAction, FontIcon::BAN, Client.m_ChatIgnore, &Action, BUTTONFLAG_LEFT, ActionCorners))
+		bool Muted = pScoreboard->GameClient()->m_WarList.m_MuteMap.contains(Client.m_aName); // EClient
+
+		if(pUi->DoButton_FontIcon(&pPopupContext->m_MuteAction, FontIcon::BAN, Muted, &Action, BUTTONFLAG_LEFT, ActionCorners))
 		{
-			Client.m_ChatIgnore ^= 1;
+			if(!Muted)
+				pScoreboard->GameClient()->m_WarList.AddMute(Client.m_aName, false);
+			else
+				pScoreboard->GameClient()->m_WarList.RemoveMute(Client.m_aName);
 		}
-		pScoreboard->Ui()->DoToolTip(&pPopupContext->m_MuteAction, &Action, Client.m_ChatIgnore ? Localize("Unmute") : Localize("Mute"));
+		// EClient
+		pScoreboard->Ui()->DoToolTip(&pPopupContext->m_MuteAction, &Action, Muted ? Localize("Unmute") : Localize("Mute"));
 
 		Container.VSplitLeft(ActionSpacing, nullptr, &Container);
 		Container.VSplitLeft(ActionSize, &Action, &Container);

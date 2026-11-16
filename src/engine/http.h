@@ -64,6 +64,8 @@ public:
 	void SkipByFileTime(bool SkipByFileTime) { m_SkipByFileTime = SkipByFileTime; }
 	void IpResolve(IPRESOLVE IpResolve) { m_IpResolve = IpResolve; }
 	void FailOnErrorStatus(bool FailOnErrorStatus) { m_FailOnErrorStatus = FailOnErrorStatus; }
+	// skip TLS certificate verification (needed for some third-party APIs)
+	void InsecureSsl(bool InsecureSsl) { m_InsecureSsl = InsecureSsl; }
 	// Download to memory only. Get the result via `Result*`.
 	void WriteToMemory();
 	// Download to filesystem and memory.
@@ -74,8 +76,6 @@ public:
 	// `OnValidation(true)` has been called.
 	void ValidateBeforeOverwrite(bool ValidateBeforeOverwrite) { m_ValidateBeforeOverwrite = ValidateBeforeOverwrite; }
 	void ExpectSha256(const SHA256_DIGEST &Sha256) { m_ExpectedSha256 = Sha256; }
-	// Skip TLS certificate verification (for self-signed certificates).
-	void InsecureSsl(bool InsecureSsl) { m_InsecureSsl = InsecureSsl; }
 
 	void Head();
 	void Post(const unsigned char *pData, size_t DataLength);
@@ -142,7 +142,7 @@ protected:
 	static const char *GetRequestType(REQUEST Type);
 
 	// Request
-	char m_aUrl[256] = "";
+	char m_aUrl[2048] = "";
 	REQUEST m_Type = REQUEST::GET;
 	unsigned char *m_pBody = nullptr;
 	size_t m_BodyLength = 0;

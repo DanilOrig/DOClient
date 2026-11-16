@@ -578,6 +578,7 @@ bool CEditorMap::Load(const char *pFilename, int StorageType, const FErrorHandle
 			{
 				pImg->m_Width = pItem->m_Width;
 				pImg->m_Height = pItem->m_Height;
+				pImg->m_CompressedSize = pMap->GetFileDataSize(pItem->m_ImageData);
 				pImg->m_Format = CImageInfo::FORMAT_RGBA;
 
 				const void *pData = pMap->GetData(pItem->m_ImageData);
@@ -585,6 +586,7 @@ bool CEditorMap::Load(const char *pFilename, int StorageType, const FErrorHandle
 				{
 					pImg->m_Width = 0;
 					pImg->m_Height = 0;
+					pImg->m_CompressedSize = 0;
 					char aBuf[128];
 					str_format(aBuf, sizeof(aBuf), "Error: Failed to load data of image %d '%s'.", i, pImg->m_aName);
 					ErrorHandler(aBuf);
@@ -640,8 +642,11 @@ bool CEditorMap::Load(const char *pFilename, int StorageType, const FErrorHandle
 				str_format(aBuf, sizeof(aBuf), "mapres/%s.opus", pSound->m_aName);
 
 				// load external
-				if(m_pEditor->Storage()->ReadFile(aBuf, IStorage::TYPE_ALL, &pSound->m_pData, &pSound->m_DataSize))
+				void *pData;
+				unsigned DataSize;
+				if(m_pEditor->Storage()->ReadFile(aBuf, IStorage::TYPE_ALL, &pData, &DataSize))
 				{
+					pSound->SetData(pData, DataSize);
 					pSound->m_SoundId = m_pEditor->Sound()->LoadOpusFromMem(pSound->m_pData, pSound->m_DataSize, true, pSound->m_aName);
 				}
 				else
@@ -652,6 +657,7 @@ bool CEditorMap::Load(const char *pFilename, int StorageType, const FErrorHandle
 			}
 			else
 			{
+				pSound->m_CompressedSize = pMap->GetFileDataSize(pItem->m_SoundData);
 				pSound->m_DataSize = pMap->GetDataSize(pItem->m_SoundData);
 				void *pData = pMap->GetData(pItem->m_SoundData);
 				pSound->m_pData = malloc(pSound->m_DataSize);
@@ -1006,11 +1012,9 @@ bool CEditorMap::Load(const char *pFilename, int StorageType, const FErrorHandle
 	{
 		const CMapBasedEnvelopePointAccess EnvelopePoints(pMap.get());
 
-		int EnvelopeStart, EnvelopeNum;
-		pMap->GetType(MAPITEMTYPE_ENVELOPE, &EnvelopeStart, &EnvelopeNum);
-		for(int EnvelopeIndex = 0; EnvelopeIndex < EnvelopeNum; EnvelopeIndex++)
+		int EnvelopeIndex = 0;
+		for(const CMapItemEnvelope *pItem : EnvelopePoints.Envelopes())
 		{
-			CMapItemEnvelope *pItem = (CMapItemEnvelope *)pMap->GetItem(EnvelopeStart + EnvelopeIndex);
 			int Channels = pItem->m_Channels;
 			if(Channels <= 0 || Channels == 2 || Channels > CEnvPoint::MAX_CHANNELS)
 			{
@@ -1040,6 +1044,7 @@ bool CEditorMap::Load(const char *pFilename, int StorageType, const FErrorHandle
 			m_vpEnvelopes.push_back(pEnvelope);
 			if(pItem->m_Version >= 2)
 				pEnvelope->m_Synchronized = pItem->m_Synchronized;
+			EnvelopeIndex++;
 		}
 	}
 

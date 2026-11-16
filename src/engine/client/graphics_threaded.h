@@ -36,6 +36,7 @@ enum class EBlendMode
 	NONE,
 	ALPHA,
 	ADDITIVE,
+	MULTIPLY,
 };
 
 enum class EWrapMode
@@ -858,20 +859,15 @@ class CGraphics_Threaded : public IEngineGraphics
 	void AddVertices(int Count, CCommandBuffer::SVertexTex3DStream *pVertices);
 
 	template<typename TName>
-	void Rotate(const CCommandBuffer::SPoint &Center, TName *pPoints, int NumPoints)
+	void Rotate(const CCommandBuffer::SPoint &Center, TName *pPoints, size_t NumPoints)
 	{
-		float c = std::cos(m_Rotation);
-		float s = std::sin(m_Rotation);
-		float x, y;
-		int i;
-
-		TName *pVertices = pPoints;
-		for(i = 0; i < NumPoints; i++)
+		const float Cos = std::cos(m_Rotation);
+		const float Sin = std::sin(m_Rotation);
+		for(size_t i = 0; i < NumPoints; i++)
 		{
-			x = pVertices[i].m_Pos.x - Center.x;
-			y = pVertices[i].m_Pos.y - Center.y;
-			pVertices[i].m_Pos.x = x * c - y * s + Center.x;
-			pVertices[i].m_Pos.y = x * s + y * c + Center.y;
+			const vec2 Offset = pPoints[i].m_Pos - Center;
+			pPoints[i].m_Pos.x = Offset.x * Cos - Offset.y * Sin + Center.x;
+			pPoints[i].m_Pos.y = Offset.x * Sin + Offset.y * Cos + Center.y;
 		}
 	}
 
@@ -912,6 +908,7 @@ public:
 	void BlendNone() override;
 	void BlendNormal() override;
 	void BlendAdditive() override;
+	void BlendMultiply() override;
 
 	void WrapNormal() override;
 	void WrapClamp() override;
@@ -1088,6 +1085,8 @@ public:
 	void DrawRectExt4(float x, float y, float w, float h, ColorRGBA ColorTopLeft, ColorRGBA ColorTopRight, ColorRGBA ColorBottomLeft, ColorRGBA ColorBottomRight, float r, int Corners) override;
 	int CreateRectQuadContainer(float x, float y, float w, float h, float r, int Corners) override;
 	void DrawRect(float x, float y, float w, float h, ColorRGBA Color, int Corners, float Rounding) override;
+	void DrawRectOutline(float x, float y, float w, float h, ColorRGBA Color, int Corners, int Sides, float Rounding) override;
+
 	void DrawRect4(float x, float y, float w, float h, ColorRGBA ColorTopLeft, ColorRGBA ColorTopRight, ColorRGBA ColorBottomLeft, ColorRGBA ColorBottomRight, int Corners, float Rounding) override;
 	void DrawCircle(float CenterX, float CenterY, float Radius, int Segments) override;
 
@@ -1238,6 +1237,7 @@ public:
 	void TakeCustomScreenshot(const char *pFilename) override;
 	void ReadFramebuffer(CImageInfo &Image);
 	void SetScreenSize(int Width, int Height);
+	void RenderNightShift(); // EClient
 	void Swap() override;
 	bool SetVSync(bool State) override;
 	bool SetMultiSampling(uint32_t ReqMultiSamplingCount, uint32_t &MultiSamplingCountBackend) override;

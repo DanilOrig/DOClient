@@ -17,19 +17,52 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <limits>
+#include <string>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
 
 using namespace std::chrono_literals;
 
+// TClient
+static void ReplaceHyphensWithSpaces(char *pStr)
+{
+	if(pStr == nullptr)
+		return;
+	while(*pStr)
+	{
+		if(*pStr == '-')
+			*pStr = ' ';
+		pStr++;
+	}
+}
+
 enum
 {
 	FONT_NAME_SIZE = 128,
 };
+
+// EClient: chat color codes, "&NN" picks a hue, "&NNS" also picks a saturation
+// and "&x" resets to the color the text started with.
+static bool IsColorCodeDigit(char Char)
+{
+	return Char >= '0' && Char <= '9';
+}
+
+// Length of the code following the '&', or 0 when there is no valid code.
+static int ColorCodeLength(const char *pCode)
+{
+	if(pCode[0] == 'x')
+		return 1;
+	// The short circuits keep this from reading past the terminator
+	if(!IsColorCodeDigit(pCode[0]) || !IsColorCodeDigit(pCode[1]))
+		return 0;
+	return IsColorCodeDigit(pCode[2]) ? 3 : 2;
+}
 
 struct SGlyph
 {
@@ -354,6 +387,16 @@ private:
 			{
 				FamilyNameMatch = CurrentFace;
 			}
+
+			// TClient
+			// Third best match: match the fucking font name
+			char aBuf[256];
+			str_copy(aBuf, FT_Get_Postscript_Name(CurrentFace));
+			ReplaceHyphensWithSpaces(aBuf);
+			if(!FamilyNameMatch && str_comp(pFamilyName, aBuf) == 0)
+			{
+				FamilyNameMatch = CurrentFace;
+			}
 		}
 
 		return FamilyNameMatch;
@@ -405,6 +448,11 @@ private:
 
 	FT_UInt GetCharGlyph(int Chr, FT_Face *pFace, bool AllowReplacementCharacter)
 	{
+		// EClient: Unicode tag characters can have empty glyphs in Noto Emoji.
+		// Show the missing-glyph square instead of allowing invisible player names.
+		if(Chr == 0xe0001 || (Chr >= 0xe0020 && Chr <= 0xe007f))
+			Chr = REPLACEMENT_CHARACTER;
+
 		for(FT_Face Face : {m_SelectedFace, m_DefaultFace, m_VariantFace})
 		{
 			if(Face && Face->charmap)
@@ -450,31 +498,67 @@ private:
 
 	void Grow(const unsigned char *pIn, unsigned char *pOut, int w, int h, int OutlineCount) const
 	{
+		struct SSample
+		{
+			int m_OffsetX;
+			int m_OffsetY;
+			unsigned char m_Mask;
+		};
+
+		// The kernel is the same for every pixel, so its weights are worked out once here rather
+		// than a square root and a clamp per pixel per tap.
+		dbg_assert(OutlineCount <= MAX_OUTLINE_THICKNESS, "Outline thickness out of range");
+		constexpr int MaxDiameter = MAX_OUTLINE_THICKNESS * 2 + 1;
+		SSample aSamples[MaxDiameter * MaxDiameter];
+		int NumSamples = 0;
+
+		for(int sy = -OutlineCount; sy <= OutlineCount; sy++)
+		{
+			for(int sx = -OutlineCount; sx <= OutlineCount; sx++)
+			{
+				const int DistanceSquared = sx * sx + sy * sy;
+
+				// Nothing past the one pixel falloff contributes anything, so the corners of the
+				// square kernel are dropped instead of being sampled for a zero weight
+				if(DistanceSquared > (OutlineCount + 1) * (OutlineCount + 1))
+					continue;
+
+				const float Distance = std::sqrt(static_cast<float>(DistanceSquared));
+				const float Mask = 1.0f - std::clamp(Distance - OutlineCount, 0.0f, 1.0f);
+				if(Mask <= 0.0f)
+					continue;
+
+				aSamples[NumSamples] = {sx, sy, static_cast<unsigned char>(Mask * 255.0f + 0.5f)};
+				NumSamples++;
+			}
+		}
+
 		for(int y = 0; y < h; y++)
 		{
 			for(int x = 0; x < w; x++)
 			{
 				int c = pIn[y * w + x];
 
-				for(int sy = -OutlineCount; sy <= OutlineCount; sy++)
+				for(int i = 0; i < NumSamples; i++)
 				{
-					for(int sx = -OutlineCount; sx <= OutlineCount; sx++)
-					{
-						int GetX = x + sx;
-						int GetY = y + sy;
-						if(GetX >= 0 && GetY >= 0 && GetX < w && GetY < h)
-						{
-							int Index = GetY * w + GetX;
-							float Mask = 1.f - std::clamp(length(vec2(sx, sy)) - OutlineCount, 0.f, 1.f);
-							c = std::max(c, (int)(pIn[Index] * Mask));
-						}
-					}
+					const SSample &Sample = aSamples[i];
+					const int GetX = x + Sample.m_OffsetX;
+					const int GetY = y + Sample.m_OffsetY;
+
+					if(GetX < 0 || GetY < 0 || GetX >= w || GetY >= h)
+						continue;
+
+					const int Value = (pIn[GetY * w + GetX] * Sample.m_Mask) / 255;
+					c = std::max(c, Value);
 				}
 
 				pOut[y * w + x] = c;
 			}
 		}
 	}
+
+	// The largest AdjustOutlineThicknessToFontSize can return, which bounds the Grow kernel
+	static constexpr int MAX_OUTLINE_THICKNESS = 4;
 
 	int AdjustOutlineThicknessToFontSize(int OutlineThickness, int FontSize) const
 	{
@@ -606,6 +690,8 @@ public:
 			delete[] pTextureData;
 		}
 	}
+	// TClient
+	std::vector<FT_Face> *GetFaces() { return &m_vFtFaces; }
 
 	FT_Face DefaultFace() const
 	{
@@ -980,6 +1066,10 @@ class CTextRender : public IEngineTextRender
 
 	std::chrono::nanoseconds m_CursorRenderTime;
 
+	// TClient
+	std::vector<std::string> m_CustomFontFaces;
+	std::vector<std::string> m_DefaultFontFaces;
+
 	int GetFreeTextContainerIndex()
 	{
 		if(m_FirstFreeTextContainerIndex == -1)
@@ -1175,6 +1265,86 @@ public:
 		m_pStorage = nullptr;
 	}
 
+	// TClient
+	static int LaziestFileCallback(const char *pFilename, int IsDir, int StorageType, void *pUser)
+	{
+		std::vector<std::string> *pVector = static_cast<std::vector<std::string> *>(pUser);
+		if(IsDir)
+			return 0;
+		pVector->emplace_back(pFilename);
+		return 0;
+	}
+	// TClient
+	void CheckDefaultFaces()
+	{
+		for(const auto &CurrentFace : *m_pGlyphMap->GetFaces())
+		{
+			char aBuf[256];
+			str_copy(aBuf, FT_Get_Postscript_Name(CurrentFace));
+			ReplaceHyphensWithSpaces(aBuf);
+			m_DefaultFontFaces.emplace_back(aBuf);
+		}
+	}
+	// TClient
+	void UpdateCustomFontList()
+	{
+		std::vector<std::string> vAllFaces;
+		for(const auto &CurrentFace : *m_pGlyphMap->GetFaces())
+		{
+			char aBuf[256];
+			str_copy(aBuf, FT_Get_Postscript_Name(CurrentFace));
+			ReplaceHyphensWithSpaces(aBuf);
+			vAllFaces.emplace_back(aBuf);
+		}
+
+		m_CustomFontFaces.clear();
+		m_CustomFontFaces.emplace_back("DejaVu Sans");
+		for(const auto &Face : vAllFaces)
+			if(std::find(m_DefaultFontFaces.begin(), m_DefaultFontFaces.end(), Face) == m_DefaultFontFaces.end())
+				m_CustomFontFaces.push_back(Face);
+	}
+	// TClient
+	void LoadCustomFonts()
+	{
+		CheckDefaultFaces();
+		std::vector<std::string> vCustomFonts;
+		Storage()->ListDirectory(IStorage::TYPE_ALL, "entity/fonts", LaziestFileCallback, &vCustomFonts);
+		std::sort(vCustomFonts.begin(), vCustomFonts.end());
+		for(const std::string &FilePath : vCustomFonts)
+		{
+			char aFontName[IO_MAX_PATH_LENGTH];
+			str_format(aFontName, sizeof(aFontName), "entity/fonts/%s", FilePath.c_str());
+			void *pFontData;
+			unsigned FontDataSize;
+			if(Storage()->ReadFile(aFontName, IStorage::TYPE_ALL, &pFontData, &FontDataSize))
+			{
+				if(LoadFontCollection(aFontName, static_cast<FT_Byte *>(pFontData), (FT_Long)FontDataSize))
+				{
+					m_vpFontData.push_back(pFontData);
+				}
+				else
+				{
+					free(pFontData);
+				}
+			}
+			else
+			{
+				log_error("textrender", "Failed to open/read font file '%s'", aFontName);
+			}
+		}
+		UpdateCustomFontList();
+	}
+	// TClient
+	std::vector<std::string> *GetCustomFaces() override
+	{
+		return &m_CustomFontFaces;
+	}
+	// TClient
+	void SetCustomFace(const char *pFace) override
+	{
+		m_pGlyphMap->SetDefaultFaceByName(pFace);
+	}
+
 	bool LoadFonts() override
 	{
 		// read file data into buffer
@@ -1260,6 +1430,9 @@ public:
 			log_error("textrender", "Font index malformed: 'default' must be a string");
 			Success = false;
 		}
+		// TClient
+		LoadCustomFonts();
+		m_pGlyphMap->AddFallbackFaceByName("DejaVu Sans");
 
 		// extract language variant family names
 		const json_value &Variants = (*pJsonData)["language variants"];
@@ -1452,9 +1625,11 @@ public:
 		{
 			if((pCursor->m_Flags & TEXTFLAG_RENDER) != 0)
 			{
-				ColorRGBA TextColor = DefaultTextColor();
-				ColorRGBA TextColorOutline = DefaultTextOutlineColor();
-				RenderTextContainer(TextCont, TextColor, TextColorOutline);
+				// The fill colour is already baked into the glyph vertices from m_Color, and
+				// RenderTextContainer multiplies by what it is handed, so it is passed the
+				// identity here. The outline has no such path and has to be handed over, which is
+				// what makes TextOutlineColor apply to Text and TextEx at all.
+				RenderTextContainer(TextCont, DefaultTextColor(), m_OutlineColor);
 			}
 			DeleteTextContainer(TextCont);
 		}
@@ -1827,23 +2002,21 @@ public:
 					const float CharX = (DrawX + CharKerning) + BearingX;
 					const float CharY = TmpY - BearingY;
 
-					// Check if we have any color split
+					// Check if we have any color split. Appending to a container keeps
+					// counting characters where the previous append left off, so skip over
+					// every split that already ended instead of advancing one per glyph.
 					ColorRGBA Color = m_Color;
-					if(ColorOption < (int)pCursor->m_vColorSplits.size())
+					while(ColorOption < (int)pCursor->m_vColorSplits.size())
 					{
-						STextColorSplit &Split = pCursor->m_vColorSplits.at(ColorOption);
-						if(PrevCharCount >= Split.m_CharIndex && (Split.m_Length == -1 || PrevCharCount < Split.m_CharIndex + Split.m_Length))
-							Color = Split.m_Color;
-						if(Split.m_Length != -1 && PrevCharCount >= (Split.m_CharIndex + Split.m_Length - 1))
+						const STextColorSplit &Split = pCursor->m_vColorSplits[ColorOption];
+						if(Split.m_Length != -1 && PrevCharCount >= Split.m_CharIndex + Split.m_Length)
 						{
 							ColorOption++;
-							if(ColorOption < (int)pCursor->m_vColorSplits.size())
-							{ // Handle splits that are
-								Split = pCursor->m_vColorSplits.at(ColorOption);
-								if(PrevCharCount >= Split.m_CharIndex)
-									Color = Split.m_Color;
-							}
+							continue;
 						}
+						if(PrevCharCount >= Split.m_CharIndex)
+							Color = Split.m_Color;
+						break;
 					}
 
 					// don't add text that isn't drawn, the color overwrite is used for that
@@ -2362,6 +2535,141 @@ public:
 		}
 
 		dbg_assert(!HasNonEmptyTextContainer, "text container was not empty");
+	}
+
+	ColorRGBA HSVtoRGB(float h, float s, float v) override
+	{
+		float r = 0, g = 0, b = 0;
+		int i = int(h * 6);
+		float f = h * 6 - i;
+		float p = v * (1 - s);
+		float q = v * (1 - f * s);
+		float t = v * (1 - (1 - f) * s);
+		switch(i % 6)
+		{
+		case 0: r = v, g = t, b = p; break;
+		case 1: r = q, g = v, b = p; break;
+		case 2: r = p, g = v, b = t; break;
+		case 3: r = p, g = q, b = v; break;
+		case 4: r = t, g = p, b = v; break;
+		case 5: r = v, g = p, b = q; break;
+		}
+		return ColorRGBA(r, g, b, 1.0f);
+	}
+	// EClient: turns the "&NN"/"&NNS"/"&x" codes in pText into color splits on pCursor and
+	// draws the text in a single pass. Doing it in one pass instead of one draw call per
+	// color segment keeps word wrapping, caret placement and text selection working across
+	// a color change, and composes with color splits the caller already put on the cursor.
+	void ColorParsing(const char *pText, CTextCursor *pCursor, STextContainerIndex *pTextContainerIndex) override
+	{
+		if(pText == nullptr)
+			return;
+
+		// Codes are only stripped when building a text container. The line input keeps them
+		// visible so they can still be edited while typing.
+		const bool StripCodes = pTextContainerIndex != nullptr;
+
+		auto DrawText = [&](const char *pDraw, int Length) {
+			if(StripCodes)
+				CreateOrAppendTextContainer(*pTextContainerIndex, pCursor, pDraw, Length);
+			else
+				TextEx(pCursor, pDraw, Length);
+		};
+
+		const char *pFirstCode = pText;
+		while(*pFirstCode != '\0' && !(*pFirstCode == '&' && ColorCodeLength(pFirstCode + 1) != 0))
+			pFirstCode++;
+		if(*pFirstCode == '\0')
+		{
+			// No codes at all, which is the common case, so don't touch the color splits
+			DrawText(pText, -1);
+			return;
+		}
+
+		// Color splits are indexed by the byte offset within the whole cursor
+		const int BaseIndex = pCursor->m_CharCount;
+		const std::vector<STextColorSplit> vOriginalSplits = pCursor->m_vColorSplits;
+		std::string Text;
+		Text.reserve(str_length(pText));
+
+		ColorRGBA CurrentColor = m_Color;
+		bool Colored = false;
+		int SegmentStart = 0;
+		auto FlushSegment = [&]() {
+			const int SegmentEnd = (int)Text.size();
+			// Uncolored text needs no split, it is drawn with the current text color
+			if(SegmentEnd > SegmentStart && Colored)
+				pCursor->m_vColorSplits.emplace_back(BaseIndex + SegmentStart, SegmentEnd - SegmentStart, CurrentColor);
+			SegmentStart = SegmentEnd;
+		};
+
+		const char *pCurrent = pText;
+		while(*pCurrent != '\0')
+		{
+			const int CodeLength = *pCurrent == '&' ? ColorCodeLength(pCurrent + 1) : 0;
+			if(CodeLength == 0)
+			{
+				Text.push_back(*pCurrent);
+				pCurrent++;
+				continue;
+			}
+
+			FlushSegment();
+			if(!StripCodes)
+			{
+				// The code stays visible and is drawn in the color it introduces
+				Text.append(pCurrent, CodeLength + 1);
+			}
+			if(CodeLength == 1)
+			{
+				Colored = false;
+			}
+			else
+			{
+				const float Hue = ((pCurrent[1] - '0') * 10 + (pCurrent[2] - '0')) / 100.0f;
+				const float Saturation = CodeLength == 3 ? (pCurrent[3] - '0') / 10.0f : 1.0f;
+				CurrentColor = HSVtoRGB(Hue, Saturation, 1.0f);
+				Colored = true;
+			}
+			pCurrent += CodeLength + 1;
+		}
+		FlushSegment();
+
+		// Splits the caller added are not necessarily in front of ours
+		if(!vOriginalSplits.empty())
+		{
+			std::stable_sort(pCursor->m_vColorSplits.begin(), pCursor->m_vColorSplits.end(), [](const STextColorSplit &Left, const STextColorSplit &Right) {
+				return Left.m_CharIndex < Right.m_CharIndex;
+			});
+		}
+
+		DrawText(Text.c_str(), (int)Text.size());
+
+		// Leave the cursor as we found it, the splits are baked into the container by now
+		pCursor->m_vColorSplits = vOriginalSplits;
+	}
+
+	std::string RemoveColorCodes(const char *pText) override
+	{
+		std::string Result;
+		if(pText == nullptr)
+			return Result;
+
+		const char *pCurrent = pText;
+		while(*pCurrent != '\0')
+		{
+			const int CodeLength = *pCurrent == '&' ? ColorCodeLength(pCurrent + 1) : 0;
+			if(CodeLength == 0)
+			{
+				Result.push_back(*pCurrent);
+				pCurrent++;
+			}
+			else
+			{
+				pCurrent += CodeLength + 1;
+			}
+		}
+		return Result;
 	}
 };
 

@@ -289,6 +289,10 @@ public:
 	// TODO: Refactor: should redo this a bit i think, too many virtual calls
 	virtual int SnapNumItems(int SnapId) const = 0;
 	virtual const void *SnapFindItem(int SnapId, int Type, int Id) const = 0;
+	// Same as above, but for a specific connection (CONN_MAIN/CONN_DUMMY) instead of the active one.
+	// Only the active connection is unpacked into CGameClient::m_Snap, so this is the only way to
+	// look at the state the server reports to the connection we are currently not playing on.
+	virtual const void *SnapFindItem(int Conn, int SnapId, int Type, int Id) const = 0;
 	virtual CSnapItem SnapGetItem(int SnapId, int Index) const = 0;
 
 	virtual void SnapSetStaticsize(int ItemType, int Size) = 0;
@@ -356,6 +360,7 @@ public:
 	virtual IFriends *Foes() = 0;
 
 	virtual void GetSmoothTick(int *pSmoothTick, float *pSmoothIntraTick, float MixAmount) = 0;
+	virtual void GetSmoothFreezeTick(int *pSmoothTick, float *pSmoothIntraTick, float MixAmount) = 0;
 
 	virtual void AddWarning(const SWarning &Warning) = 0;
 	virtual std::optional<SWarning> CurrentWarning() = 0;
@@ -393,6 +398,19 @@ public:
 
 	virtual std::optional<int> ShowMessageBox(const IGraphics::CMessageBox &MessageBox) = 0;
 	virtual void GetGpuInfoString(char (&aGpuInfo)[512]) = 0;
+
+	// TClient
+	bool m_IsLocalFrozen = false;
+
+	// EClient
+	virtual void DiscordRPCUpdate() = 0;
+	virtual void SendFastInputsInfo(int Conn) = 0;
+	// Like DummyConnect, but the dummy does not become the active connection once it is
+	// ready. Used to connect a dummy in the background without moving the camera onto it.
+	virtual void DummyConnectInBackground() = 0;
+	int m_FoxNetVersion = 0;
+	// 0 = server did not send one
+	int m_FoxNetMovingTilesVersion = 0;
 };
 
 class IGameClient : public IInterface
@@ -415,7 +433,6 @@ public:
 	virtual void OnConnected() = 0;
 	virtual void OnMessage(int MsgId, CUnpacker *pUnpacker, int Conn, bool Dummy) = 0;
 	virtual void OnPredict() = 0;
-	virtual bool CheckNewInput() = 0;
 	virtual void OnActivateEditor() = 0;
 	virtual void OnWindowResize() = 0;
 
@@ -452,6 +469,22 @@ public:
 	virtual void InitializeLanguage() = 0;
 
 	virtual void ForceUpdateConsoleRemoteCompletionSuggestions() = 0;
+
+	// EClient
+	virtual bool CheckNewInput() = 0;
+	virtual void SetConnectInfo(const NETADDR *pAddress) = 0;
+
+	// Dummy tells which of our own tees died (CONN_MAIN/CONN_DUMMY)
+	virtual void OnSelfDeath(bool Dummy) = 0;
+
+	virtual void OnServerBrowserRefresh() = 0;
+	virtual bool HasMapFinish(const char *pPlayerName, const char *pMapName, const char *pCommunity) const = 0;
+	virtual void ClientMessage(const char *pString) = 0;
+	virtual void OnConnect(int Conn) = 0;
+	virtual void SetLastMovementTime() = 0;
+	virtual void RequestEClientInfo() = 0;
+	virtual int GetClientId(const char *pName) = 0;
+	virtual const char *GetClientName(int Id) = 0;
 };
 
 extern IGameClient *CreateGameClient();

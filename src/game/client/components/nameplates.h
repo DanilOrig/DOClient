@@ -23,6 +23,9 @@ public:
 	void OnRender() override;
 	CNamePlates();
 	~CNamePlates() override;
+
+	// EClient
+	float GetNamePlateOffset(int ClientId) const;
 };
 
 #endif

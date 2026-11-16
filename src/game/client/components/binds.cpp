@@ -182,6 +182,7 @@ bool CBinds::OnInput(const IInput::CEvent &Event)
 			{
 				return;
 			}
+
 			Console()->ExecuteLineStroked(0, m_aapKeyBindings[Bind.m_ModifierMask][Bind.m_Key], IConsole::CLIENT_ID_UNSPECIFIED);
 		};
 
@@ -302,6 +303,9 @@ void CBinds::SetDefaults()
 	Bind(KEY_K, "kill");
 	Bind(KEY_Q, "say /spec");
 	Bind(KEY_P, "say /pause");
+
+	Bind(KEY_Q, "+bindwheel"); // TClient
+	Bind(KEY_Y, "+playeractions"); // EClient
 
 	g_Config.m_ClDDRaceBindsSet = 0;
 	SetDDRaceBinds(false);

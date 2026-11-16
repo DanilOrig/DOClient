@@ -15,13 +15,21 @@ class CScreenRect;
 
 class CItems : public CComponent
 {
-	void RenderProjectile(const CProjectileData *pCurrent, int ItemId, const CScreenRect &ScreenRect);
+	// EClient: LocalWorld marks a projectile out of a world that is only ever simulated here, whose
+	// start tick is therefore on the prediction clock rather than the server's
+	void RenderProjectile(const CProjectileData *pCurrent, int ItemId, const CScreenRect &ScreenRect, bool LocalWorld = false);
 	void RenderPickup(const CNetObj_Pickup *pPrev, const CNetObj_Pickup *pCurrent, bool IsPredicted, int Flags);
 	void RenderFlags();
 	void RenderFlag(const CNetObj_Flag *pPrev, const CNetObj_Flag *pCurrent, const CNetObj_GameData *pPrevGameData, const CNetObj_GameData *pCurGameData);
 	void RenderLaser(const CLaserData *pCurrent, bool IsPredicted = false);
 
 	int m_ItemsQuadContainerIndex;
+
+	// <FoxNet
+	void RenderCosmeticLaser(const CNetObj_CosmeticLaser *pPrev, const CNetObj_CosmeticLaser *pCurrent);
+	void RenderCosmeticPickup(const CNetObj_CosmeticPickup *pPrev, const CNetObj_CosmeticPickup *pCurrent);
+	void RenderCosmeticProjectile(const CNetObj_CosmeticProjectile *pPrev, const CNetObj_CosmeticProjectile *pCurrent);
+	// FoxNet>
 
 public:
 	int Sizeof() const override { return sizeof(*this); }

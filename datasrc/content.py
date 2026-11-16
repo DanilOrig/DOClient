@@ -246,6 +246,10 @@ container.sounds.Add(SoundSet("ctf_capture", ["audio/sfx_ctf_cap_pl.wv"]))
 
 container.sounds.Add(SoundSet("menu", ["audio/music_menu.wv"]))
 
+# EClient
+image_generic_ghost = Image("generic_ghost", "entity/icons/generic_ghost.png")
+image_muted_icon = Image("muted_icon", "entity/icons/muted_icon.png")
+image_settings_icon = Image("settings_icon", "entity/icons/settings_icon.png")
 image_null = Image("null", "")
 image_particles = Image("particles", "particles.png")
 image_game = Image("game", "game.png")
@@ -276,6 +280,11 @@ container.images.Add(image_hud)
 container.images.Add(image_extras)
 container.images.Add(Image("raceflag", "race_flag.png"))
 
+# EClient
+container.images.Add(image_generic_ghost)
+container.images.Add(image_muted_icon)
+container.images.Add(image_settings_icon)
+
 container.pickups.Add(Pickup("health"))
 container.pickups.Add(Pickup("armor"))
 container.pickups.Add(Pickup("armor_shotgun"))
@@ -297,6 +306,11 @@ set_strongweak = SpriteSet("strongweak", image_strongweak, 3, 1)
 set_hud = SpriteSet("hud", image_hud, 16, 16)
 set_extras = SpriteSet("extras", image_extras, 16, 16)
 
+# EClient
+set_generic_ghost = SpriteSet("generic_ghost", image_generic_ghost, 1, 1)
+set_muted_icon = SpriteSet("muted_icon", image_muted_icon, 1, 1)
+set_settings_icon = SpriteSet("settings_icon", image_settings_icon, 1, 1)
+
 container.spritesets.Add(set_particles)
 container.spritesets.Add(set_game)
 container.spritesets.Add(set_tee)
@@ -308,6 +322,11 @@ container.spritesets.Add(set_audio_source)
 container.spritesets.Add(set_strongweak)
 container.spritesets.Add(set_hud)
 container.spritesets.Add(set_extras)
+
+# EClient
+container.spritesets.Add(set_generic_ghost)
+container.spritesets.Add(set_settings_icon)
+container.spritesets.Add(set_muted_icon)
 
 container.sprites.Add(Sprite("part_slice", set_particles, 0, 0, 1, 1))
 container.sprites.Add(Sprite("part_ball", set_particles, 1, 0, 1, 1))
@@ -435,6 +454,11 @@ container.sprites.Add(Sprite("guiicon_emoticon_mute", set_guiicons, 4, 0, 4, 2))
 container.sprites.Add(Sprite("guiicon_friend", set_guiicons, 8, 0, 4, 2))
 
 container.sprites.Add(Sprite("audio_source", set_audio_source, 0, 0, 1, 1))
+
+# EClient
+container.sprites.Add(Sprite("generic_ghost", set_generic_ghost, 0, 0, 1, 1))
+container.sprites.Add(Sprite("settings_icon", set_settings_icon, 0, 0, 1, 1))
+container.sprites.Add(Sprite("muted_icon", set_muted_icon, 0, 0, 1, 1))
 
 container.sprites.Add(Sprite("hook_strong", set_strongweak, 0, 0, 1, 1))
 container.sprites.Add(Sprite("hook_weak", set_strongweak, 1, 0, 1, 1))

@@ -12,6 +12,9 @@
 
 class CVoting : public CComponent
 {
+	// EClient: stands in a vote while the HUD editor is previewing
+	friend class CHud;
+
 	CHeap m_Heap;
 
 	static void ConCallvote(IConsole::IResult *pResult, void *pUserData);
@@ -34,11 +37,12 @@ class CVoting : public CComponent
 
 	void RemoveOption(const char *pDescription);
 	void ClearOptions();
-	void Callvote(const char *pType, const char *pValue, const char *pReason);
 
 	void RenderBars(CUIRect Bars) const;
 
 public:
+	void Callvote(const char *pType, const char *pValue, const char *pReason); // EClient
+
 	CVoting();
 	int Sizeof() const override { return sizeof(*this); }
 	void OnReset() override;

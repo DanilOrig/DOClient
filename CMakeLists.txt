@@ -117,7 +117,14 @@ option(WEBSOCKETS "Enable websockets support" OFF)
 option(MYSQL "Enable mysql support" OFF)
 option(TEST_MYSQL "Test mysql support in unit tests (also sets -DMYSQL=ON)" OFF)
 option(AUTOUPDATE "Enable the autoupdater" OFF)
-option(INFORM_UPDATE "Inform about available updates" ON)
+# <E-Client
+if(AUTOUPDATE)
+  message(WARNING "The DDNet updater is disabled in E-Client; GitHub Releases are used instead")
+  set(AUTOUPDATE OFF CACHE BOOL "Enable the autoupdater" FORCE)
+endif()
+option(ECLIENT_AUTOUPDATE "Enable the E-Client GitHub Releases updater" OFF)
+# E-Client>
+option(INFORM_UPDATE "Inform about available updates" OFF)
 option(VIDEORECORDER "Enable video recording support via FFmpeg" ON)
 option(UPNP "Enable UPnP support" OFF)
 option(ANTIBOT "Enable support for a dynamic anticheat library (not provided, see src/antibot for interface if you want to implement your own)" OFF)
@@ -160,6 +167,10 @@ if(TARGET_OS STREQUAL "mac" AND MACOS_CODESIGN)
     message(WARNING "MACOS_APP_IDENTITY environment variable not defined. Using ad-hoc signature")
     set(MACOS_APP_IDENTITY "-") # ad-hoc signature
   endif()
+endif()
+
+if(TARGET_OS STREQUAL "android")
+    set(DISCORD OFF)
 endif()
 
 if(TARGET_OS STREQUAL "emscripten")
@@ -331,7 +342,12 @@ if(NOT MSVC AND NOT HAIKU)
     add_cxx_compiler_flag_if_supported(OUR_FLAGS -fstack-clash-protection)
     # Forward-edge control-flow protection (CET on x86, BTI/PAC on aarch64).
     add_cxx_compiler_flag_if_supported(OUR_FLAGS -fcf-protection=full)
-    add_cxx_compiler_flag_if_supported(OUR_FLAGS -mbranch-protection=standard)
+    if(NOT TARGET_OS STREQUAL "mac" AND NOT TARGET_OS STREQUAL "ios")
+      # clang rejects -mbranch-protection= for Apple targets, but check_cxx_compiler_flag
+      # only probes the host and reports success anyway, so the universal (arm64;x86_64)
+      # build then fails on the x86_64 slice. Apple has its own pointer authentication.
+      add_cxx_compiler_flag_if_supported(OUR_FLAGS -mbranch-protection=standard)
+    endif()
     if(NOT TARGET_OS STREQUAL "windows" AND NOT TARGET_OS STREQUAL "mac")
       # Resolve all dynamic symbols at startup and make the GOT read-only afterwards (full RELRO).
       add_linker_flag_if_supported(OUR_FLAGS_LINK -Wl,-z,relro)
@@ -339,8 +355,14 @@ if(NOT MSVC AND NOT HAIKU)
     endif()
   endif()
 
-  # Disable exceptions as DDNet does not use them.
-  add_cxx_compiler_flag_if_supported(OUR_FLAGS -fno-exceptions)
+  # Upstream disables exceptions everywhere. This fork keeps them because ChaiScript needs
+  # them, but ChaiScript is game-client only, so the server is still built without them
+  # like upstream. That also keeps GCC from emitting the CCharacter pool's operator delete
+  # as an unwind path for the placement new in player.cpp, which -Wfree-nonheap-object
+  # false-positives on under LTO. Applied to the server targets further down.
+  # Haha, but we need them -Tater
+  # Whatever that guy said -qxdFox
+  add_cxx_compiler_flag_if_supported(OUR_FLAGS_SERVER -fno-exceptions)
 
   # Inaccurate floating point numbers cause problems on mingw-w64-gcc when
   # compiling for x86, might cause problems elsewhere. So don't store floats
@@ -620,6 +642,10 @@ find_package(PNG)
 find_package(Python3)
 find_package(Rust)
 find_package(SDL2)
+if(CLIENT AND TARGET_OS STREQUAL "linux")
+  find_package(DBus REQUIRED)
+  find_package(PulseAudio)
+endif()
 find_package(SQLite3)
 if(DISCORD)
   find_package(DiscordSdk)
@@ -799,7 +825,7 @@ endif()
 
 if(TARGET_OS STREQUAL "windows")
   set(PLATFORM_CLIENT)
-  set(PLATFORM_CLIENT_LIBS opengl32.lib winmm.lib imm32.lib)
+  set(PLATFORM_CLIENT_LIBS opengl32.lib winmm.lib imm32.lib WindowsApp.lib)
   set(PLATFORM_LIBS)
   list(APPEND PLATFORM_LIBS shlwapi.lib) # PathIsRelativeW
   list(APPEND PLATFORM_LIBS version.lib) # GetFileVersionInfoSizeW
@@ -1594,6 +1620,35 @@ set(EXPECTED_DATA
   countryflags/VU.png
   countryflags/WF.png
   countryflags/WS.png
+  countryflags/X-AROACE.png
+  countryflags/X-BI.png
+  countryflags/X-BLACK.png
+  countryflags/X-BLUEKITTY.png
+  countryflags/X-BLUESTRIPE.png
+  countryflags/X-BROWNBEAR.png
+  countryflags/X-CAMMO.png
+  countryflags/X-CAMMOSTRIPES.png
+  countryflags/X-COALA.png
+  countryflags/X-ENTITY.png
+  countryflags/X-FINISH.png
+  countryflags/X-GAY.png
+  countryflags/X-LESBIAN.png
+  countryflags/X-LIMEKITTY.png
+  countryflags/X-PINKY.png
+  countryflags/X-PIRATE.png
+  countryflags/X-PROGRESS.png
+  countryflags/X-RAINBOW.png
+  countryflags/X-REDBOPP.png
+  countryflags/X-REDSTRIPE.png
+  countryflags/X-SADDO.png
+  countryflags/X-TOPTRI.png
+  countryflags/X-TOTAR.png
+  countryflags/X-TRANS.png
+  countryflags/X-TROLL.png
+  countryflags/X-TWINBOP.png
+  countryflags/X-TWINTRI.png
+  countryflags/X-WARPAINT.png
+  countryflags/X-WHITE.png
   countryflags/YE.png
   countryflags/ZA.png
   countryflags/ZM.png
@@ -1644,10 +1699,28 @@ set(EXPECTED_DATA
   editor/tele.png
   editor/tune.png
   emoticons.png
+  entity/binds/.extra.cfg
+  entity/binds/.help.cfg
+  entity/builtinscripts/firetext.chai
+  entity/builtinscripts/smartspec.chai
+  entity/builtinscripts/str.chai
+  entity/fonts/Cabin-Regular.ttf
+  entity/fonts/ComicSansMS.ttf
+  entity/fonts/GoogleSans-Regular.ttf
+  entity/fonts/Inter_24pt-Regular.ttf
+  entity/fonts/Inter_24pt-SemiBold.ttf
+  entity/fonts/Minecraft_font.ttf
+  entity/fonts/Montserrat-Regular.ttf
+  entity/fonts/Nunito-Black.ttf
+  entity/fonts/Rubik-Regular.ttf
+  entity/icons/generic_ghost.png
+  entity/icons/muted_icon.png
+  entity/icons/settings_icon.png
   extras.png
   fonts/DejaVuSans.ttf
   fonts/Font_Awesome_6_Free-Solid-900.otf
   fonts/GlowSansJ-Compressed-Book.otf
+  fonts/NotoEmoji-Regular.ttf
   fonts/SourceHanSans.ttc
   fonts/index.json
   game.png
@@ -1826,6 +1899,7 @@ set(EXPECTED_DATA
   skins/brownbear.png
   skins/cammo.png
   skins/cammostripes.png
+  skins/catnoa.png
   skins/chinese_by_whis.png
   skins/coala.png
   skins/coala_bluekitty.png
@@ -2065,7 +2139,7 @@ set(EXPECTED_DATA
   # tidy-alphabetical-end
 )
 
-set_glob(DATA GLOB_RECURSE "cfg;frag;json;map;otf;png;rules;ttc;ttf;txt;vert;wv" data ${EXPECTED_DATA})
+set_glob(DATA GLOB_RECURSE "cfg;chai;frag;json;map;otf;png;rules;ttc;ttf;txt;vert;wv" data ${EXPECTED_DATA})
 
 ########################################################################
 # COPY DATA AND SHARED LIBS
@@ -2278,6 +2352,8 @@ set_src(BASE GLOB_RECURSE src/base
   sphore.h
   str.cpp
   str.h
+  system.cpp
+  system.h
   thread.cpp
   thread.h
   time.cpp
@@ -2340,7 +2416,10 @@ set_src(ENGINE_SHARED GLOB_RECURSE src/engine/shared
   compression.h
   config.cpp
   config.h
+  config_domains.h
+  config_includes.h
   config_variables.h
+  config_variables_entity.h
   console.cpp
   console.h
   csv.cpp
@@ -2391,6 +2470,8 @@ set_src(ENGINE_SHARED GLOB_RECURSE src/engine/shared
   network_console_conn.cpp
   network_server.cpp
   network_stun.cpp
+  night_shift.cpp
+  night_shift.h
   packer.cpp
   packer.h
   protocol.h
@@ -2423,6 +2504,25 @@ set_src(ENGINE_SHARED GLOB_RECURSE src/engine/shared
   websockets.h
   # tidy-alphabetical-end
 )
+
+set_src(ENGINE_EXTERNAL GLOB src/engine/external
+  mumble.cpp
+  mumble.h
+  regex.cpp
+  regex.h
+  spt.cpp
+  spt.h
+  stb_image.h
+  tinyexpr.cpp
+  tinyexpr.h
+)
+
+# ChaiScript
+file(GLOB_RECURSE ENGINE_EXTERNAL_CHAISCRIPT
+  "${PROJECT_SOURCE_DIR}/src/engine/external/chaiscript/*.hpp"
+)
+list(APPEND ENGINE_EXTERNAL ${ENGINE_EXTERNAL_CHAISCRIPT})
+
 set_src(ENGINE_GFX GLOB src/engine/gfx
   # tidy-alphabetical-start
   image.cpp
@@ -2453,6 +2553,7 @@ set_src(GAME_SHARED GLOB src/game
   mapitems_ex_types.h
   prng.cpp
   prng.h
+  quad_data.h
   race_state.h
   team_state.h
   teamscore.cpp
@@ -2516,7 +2617,7 @@ set(LIBS
 # Targets
 add_library(engine-gfx EXCLUDE_FROM_ALL OBJECT ${ENGINE_GFX})
 target_include_directories(engine-gfx PRIVATE ${PNG_INCLUDE_DIRS})
-add_library(engine-shared EXCLUDE_FROM_ALL OBJECT ${ENGINE_INTERFACE} ${ENGINE_SHARED} ${ENGINE_UUID_SHARED} ${BASE})
+add_library(engine-shared EXCLUDE_FROM_ALL OBJECT ${ENGINE_EXTERNAL} ${ENGINE_INTERFACE} ${ENGINE_SHARED} ${ENGINE_UUID_SHARED} ${BASE})
 add_library(game-shared EXCLUDE_FROM_ALL OBJECT ${GAME_SHARED} ${GAME_GENERATED_SHARED})
 # game-shared compiles src/generated/data_types.h, so the Xcode generator needs
 # generate_content_types to be a dependency of it, not just of its consumers.
@@ -2594,6 +2695,8 @@ if(CLIENT)
     demoedit.cpp
     demoedit.h
     discord.cpp
+    eclient_updater.cpp
+    eclient_updater.h
     enums.h
     favorites.cpp
     friends.cpp
@@ -2670,6 +2773,57 @@ if(CLIENT)
     components/effects.h
     components/emoticon.cpp
     components/emoticon.h
+    components/entity/anti_spawn_block.cpp
+    components/entity/anti_spawn_block.h
+    components/entity/auto_dummy_connect.cpp
+    components/entity/auto_dummy_connect.h
+    components/entity/browser_map_preview.cpp
+    components/entity/browser_map_preview.h
+    components/entity/chat_bubbles.cpp
+    components/entity/chat_bubbles.h
+    components/entity/commands.cpp
+    components/entity/entity.cpp
+    components/entity/entity.h 
+    components/entity/freeze_kill.cpp
+    components/entity/freeze_kill.h 
+    components/entity/hud/hud_editor.cpp
+    components/entity/hud/hud_editor.h
+    components/entity/hud/hud_layout.cpp
+    components/entity/hud/hud_layout.h
+    components/entity/info.cpp
+    components/entity/info.h
+    components/entity/local_practice.cpp
+    components/entity/local_practice.h
+    components/entity/map_finish_browser.cpp
+    components/entity/map_finish_browser.h
+    components/entity/map_overview.cpp
+    components/entity/map_overview.h 
+    components/entity/mediaplayer/media_player.cpp
+    components/entity/mediaplayer/media_player.h
+    components/entity/mediaplayer/media_player_dbus.cpp
+    components/entity/mediaplayer/media_player_impl.h
+    components/entity/mediaplayer/media_player_winrt.cpp
+    components/entity/menus_entity.cpp
+    components/entity/moderation/mod_menu.cpp
+    components/entity/moderation/mod_menu.h
+    components/entity/moderation/webhook.cpp
+    components/entity/moderation/webhook.h
+    components/entity/moving_tiles.cpp
+    components/entity/moving_tiles.h 
+    components/entity/performance_statistics.cpp
+    components/entity/performance_statistics.h
+    components/entity/physicball.cpp
+    components/entity/physicball.h 
+    components/entity/spec_pause_radio.cpp
+    components/entity/spec_pause_radio.h
+    components/entity/warlist.cpp
+    components/entity/warlist.h
+    components/entity/wheels/bindwheel.cpp
+    components/entity/wheels/bindwheel.h
+    components/entity/wheels/player_actions.cpp
+    components/entity/wheels/player_actions.h
+    components/entity/wheels/wheel.cpp
+    components/entity/wheels/wheel.h
     components/envelope_state.cpp
     components/envelope_state.h
     components/flow.cpp
@@ -2679,8 +2833,6 @@ if(CLIENT)
     components/ghost.cpp
     components/ghost.h
     components/hud.cpp
-    components/gradient.cpp
-    components/gradient.h
     components/hud.h
     components/important_alert.cpp
     components/important_alert.h
@@ -2710,11 +2862,11 @@ if(CLIENT)
     components/menus_settings.cpp
     components/menus_settings_appearance.cpp
     components/menus_settings_assets.cpp
+    components/menus_settings_doclient.cpp
     components/menus_settings_controls.cpp
     components/menus_settings_controls.h
     components/menus_settings_credits.cpp
     components/menus_settings_ddnet.cpp
-    components/menus_settings_doclient.cpp
     components/menus_settings_general.cpp
     components/menus_settings_graphics.cpp
     components/menus_settings_language.cpp
@@ -2734,6 +2886,10 @@ if(CLIENT)
     components/players.h
     components/race_demo.cpp
     components/race_demo.h
+    components/spectateyou.cpp
+    components/spectateyou.h
+    components/gradient.cpp
+    components/gradient.h
     components/scoreboard.cpp
     components/scoreboard.h
     components/skins.cpp
@@ -2746,15 +2902,39 @@ if(CLIENT)
     components/spectator.h
     components/statboard.cpp
     components/statboard.h
+    components/tclient/bg_draw.cpp
+    components/tclient/bg_draw.h
+    components/tclient/bg_draw_file.cpp
+    components/tclient/bg_draw_file.h
+    components/tclient/bindchat.cpp
+    components/tclient/bindchat.h
+    components/tclient/custom_communities.cpp
+    components/tclient/custom_communities.h
+    components/tclient/mumble.cpp
+    components/tclient/mumble.h
+    components/tclient/outlines.cpp
+    components/tclient/outlines.h
+    components/tclient/player_indicator.cpp
+    components/tclient/player_indicator.h
+    components/tclient/rainbow.cpp
+    components/tclient/rainbow.h
+    components/tclient/scripting.cpp
+    components/tclient/scripting.h
+    components/tclient/scripting/impl.cpp
+    components/tclient/scripting/impl.h
+    components/tclient/skinprofiles.cpp
+    components/tclient/skinprofiles.h
+    components/tclient/statusbar.cpp
+    components/tclient/statusbar.h
+    components/tclient/trails.cpp
+    components/tclient/trails.h
+    components/tclient/translate.cpp
+    components/tclient/translate.h
     components/touch_controls.cpp
     components/touch_controls.h
     components/voting.cpp
     components/voting.h
-    components/warlist.cpp
-    components/warlist.h
     gameclient.cpp
-    perf.cpp
-    perf.h
     gameclient.h
     laser_data.cpp
     laser_data.h
@@ -2781,6 +2961,8 @@ if(CLIENT)
     prediction/entity.h
     prediction/gameworld.cpp
     prediction/gameworld.h
+    prediction/quad_zones.cpp
+    prediction/quad_zones.h
     projectile_data.cpp
     projectile_data.h
     race.cpp
@@ -2947,6 +3129,11 @@ if(CLIENT)
 
     ${PLATFORM_CLIENT_LIBS}
     ${LIBS}
+
+    # EClient
+    
+    ${DBUS_LIBRARIES}
+    ${PULSEAUDIO_LIBRARIES}
   )
 
   if(DISCORD)
@@ -3051,8 +3238,17 @@ if(CLIENT)
   endif()
 
   if(MSVC)
+    target_compile_options(game-client PRIVATE /bigobj) # TClient, required for ChaiScript
     target_link_options(game-client PRIVATE /ENTRY:mainCRTStartup)
   endif()
+
+  if(WIN32 AND NOT MSVC)
+    target_compile_options(game-client PRIVATE -Wa,-mbig-obj) # EClient, required for ChaiScript
+  endif()
+
+  # Silence warnings from ChaiScript
+  target_include_directories(game-client SYSTEM PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/engine/external/chaiscript)
 
   target_include_directories(game-client SYSTEM PRIVATE
     # tidy-alphabetical-start
@@ -3071,9 +3267,13 @@ if(CLIENT)
     ${VULKAN_INCLUDE_DIRS}
 
     ${PLATFORM_CLIENT_INCLUDE_DIRS}
+
+    # EClient
+    ${PULSEAUDIO_INCLUDE_DIRS}
+    ${DBUS_INCLUDE_DIRS}
   )
 
-  if(STEAMAPI_KIND STREQUAL SHARED OR DISCORD_DYNAMIC)
+  if(STEAMAPI_KIND STREQUAL SHARED OR DISCORD)
     set_own_rpath(game-client)
   endif()
 
@@ -3083,6 +3283,14 @@ if(CLIENT)
 
   if(VULKAN)
     target_compile_definitions(game-client PRIVATE CONF_BACKEND_VULKAN)
+  endif()
+
+  if(TARGET_OS STREQUAL "linux" AND DBus_FOUND)
+    target_compile_definitions(game-client PRIVATE MEDIA_PLAYER_DBUS=1)
+  endif()
+
+  if(TARGET_OS STREQUAL "linux" AND PulseAudio_FOUND)
+    target_compile_definitions(game-client PRIVATE MEDIA_PLAYER_PULSEAUDIO=1)
   endif()
 
   list(APPEND TARGETS_OWN game-client)
@@ -3458,6 +3666,7 @@ if((GTEST_FOUND OR DOWNLOAD_GTEST) AND SERVER)
     chunk_header_test.cpp
     color_test.cpp
     compression_test.cpp
+    console_test.cpp
     csv_test.cpp
     datafile_test.cpp
     dbg_test.cpp
@@ -3798,6 +4007,7 @@ endif()
 list(APPEND CPACK_DIRS ${COPY_DIRS})
 set(CPACK_FILES
   license.txt
+  steam_appid.txt
   ${COPY_FILES}
 )
 if(NOT TARGET_OS STREQUAL "emscripten")
@@ -3868,6 +4078,14 @@ if(CLIENT AND DMGBUILD_FOUND)
   endif()
 
   set(DMG_TMPDIR pack_${CPACK_PACKAGE_FILE_NAME}_dmg)
+  set(DMG_GENERATED_FILE_COMMANDS)
+  foreach(file ${CPACK_GEN_FILES})
+    get_filename_component(parent_path ${file} PATH)
+    list(APPEND DMG_GENERATED_FILE_COMMANDS
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/Resources/${parent_path}
+      COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/${file} ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/Resources/${file}
+    )
+  endforeach()
   set(DMG_MKDIRS
     # tidy-alphabetical-start
     ${CLIENT_EXECUTABLE}.app
@@ -3905,6 +4123,18 @@ if(CLIENT AND DMGBUILD_FOUND)
     set(STEAM_API_DYLIB_FOR_PACKAGE "${PROJECT_BINARY_DIR}/libsteam_api.dylib")
   endif()
 
+  if(VULKAN AND VULKAN_LIBRARIES MATCHES "libMoltenVK\\.dylib$")
+    set(DMG_VULKAN_COPY_COMMAND
+      COMMAND ${CMAKE_COMMAND} -E copy "${VULKAN_LIBRARIES}" ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/Frameworks/
+    )
+    set(DMG_VULKAN_CODESIGN_COMMAND
+      COMMAND codesign --force --options runtime --timestamp --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/Frameworks/libMoltenVK.dylib
+    )
+  else()
+    set(DMG_VULKAN_COPY_COMMAND)
+    set(DMG_VULKAN_CODESIGN_COMMAND)
+  endif()
+
   if(MACOS_CODESIGN)
     set(CODESIGN_COMMANDS
         # tidy-alphabetical-start
@@ -3920,6 +4150,7 @@ if(CLIENT AND DMGBUILD_FOUND)
         COMMAND codesign --force --options runtime --timestamp --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/Frameworks/libswscale.8.dylib
         # tidy-alphabetical-end
     )
+    list(APPEND CODESIGN_COMMANDS ${DMG_VULKAN_CODESIGN_COMMAND})
     foreach(target ${TARGET_TOOLS})
       list(APPEND CODESIGN_COMMANDS
           COMMAND codesign --force --options runtime --timestamp --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/${target}
@@ -3987,6 +4218,7 @@ if(CLIENT AND DMGBUILD_FOUND)
 
     # CLIENT
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/data ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/Resources/data
+    ${DMG_GENERATED_FILE_COMMANDS}
     COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/other/icons/${CLIENT_EXECUTABLE}.icns ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/Resources/
     COMMAND ${CMAKE_COMMAND} -E copy bundle/client/Info.plist ${PROJECT_SOURCE_DIR}/other/bundle/client/PkgInfo ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:game-client> ${TARGET_TOOLS_FILES} ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/
@@ -4002,6 +4234,7 @@ if(CLIENT AND DMGBUILD_FOUND)
     COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/ddnet-libs/png/${LIB_DIR}/libpng16.16.dylib ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/Frameworks/
     # tidy-alphabetical-end
     COMMAND ${CMAKE_COMMAND} -E copy ${STEAM_API_DYLIB_FOR_PACKAGE} ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/Frameworks/
+    ${DMG_VULKAN_COPY_COMMAND}
     COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/darwin_strip_rpath.py ${CMAKE_OTOOL} ${CMAKE_INSTALL_NAME_TOOL} ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/${CLIENT_EXECUTABLE}
     COMMAND ${CMAKE_INSTALL_NAME_TOOL} -add_rpath @loader_path/../Frameworks ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/${CLIENT_EXECUTABLE}
 
@@ -4130,6 +4363,22 @@ endif()
 
 set(TARGETS ${TARGETS_OWN} ${TARGETS_DEP})
 
+# Targets kept out of LTO under GCC. Must stay GCC-only: clang emits none of these
+# diagnostics, and taking targets out of LTO there left engine-shared's bitcode to be
+# LTO-codegen'd at link with a general-dynamic TLS model, breaking the Android armv7
+# link on __tls_get_addr.
+set(IPO_EXCLUDED_GNU
+  # Bundled zlib declares read() differently than the system headers. GCC can only compare
+  # the two once zlib's IR takes part in LTO, which it does under PREFER_BUNDLED_LIBS.
+  zlib)
+
+# The server is built without exceptions, like upstream. See OUR_FLAGS_SERVER above.
+foreach(target game-server game-server-without-main)
+  if(TARGET ${target} AND OUR_FLAGS_SERVER)
+    target_compile_options(${target} PRIVATE ${OUR_FLAGS_SERVER})
+  endif()
+endforeach()
+
 foreach(target ${TARGETS})
   if(MSVC)
     set_property(TARGET ${target} PROPERTY MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>) # Use static CRT
@@ -4164,7 +4413,10 @@ foreach(target ${TARGETS})
     endif()
   endif()
   if(ENABLE_IPO)
-    set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    # See IPO_EXCLUDED_GNU above for why these targets opt out under GCC.
+    if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND target IN_LIST IPO_EXCLUDED_GNU))
+      set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    endif()
   endif()
   if(ENABLE_PIE)
     set_property(TARGET ${target} PROPERTY POSITION_INDEPENDENT_CODE TRUE)
@@ -4287,6 +4539,9 @@ foreach(target ${TARGETS_OWN})
   if(AUTOUPDATE AND NOT STEAM)
     target_compile_definitions(${target} PRIVATE CONF_AUTOUPDATE)
   endif()
+  if(ECLIENT_AUTOUPDATE AND CLIENT AND NOT STEAM AND (TARGET_OS STREQUAL "mac" OR ((TARGET_OS STREQUAL "windows" OR TARGET_OS STREQUAL "linux") AND TARGET_CPU_ARCHITECTURE STREQUAL "x86_64")))
+    target_compile_definitions(${target} PRIVATE CONF_ECLIENT_AUTOUPDATE)
+  endif()
   if(INFORM_UPDATE AND NOT STEAM)
     target_compile_definitions(${target} PRIVATE CONF_INFORM_UPDATE)
   endif()
@@ -4324,3 +4579,15 @@ foreach(target ${TARGETS_DEP})
     target_compile_options(${target} PRIVATE ${OUR_FLAGS_DEP})
   endif()
 endforeach()
+
+if(TARGET_OS STREQUAL "windows" AND STEAM AND NOT CMAKE_BUILD_TYPE STREQUAL Debug)
+    add_custom_command(
+        TARGET game-client POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/steam_api.dll"
+            "$<TARGET_FILE_DIR:game-client>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/steam_appid.txt"
+            "$<TARGET_FILE_DIR:game-client>"
+    )
+endif()

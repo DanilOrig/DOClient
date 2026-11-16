@@ -43,6 +43,7 @@ void CTooltips::DoToolTip(const CTooltip &Tooltip)
 		// update in case of window resize, language change or changed settings
 		StoredTooltip.m_Rect = Tooltip.m_Rect;
 		StoredTooltip.m_pText = Tooltip.m_pText;
+		StoredTooltip.m_FadeTime = Tooltip.m_FadeTime;
 	}
 
 	StoredTooltip.m_OnScreen = true;
@@ -68,6 +69,10 @@ void CTooltips::OnRender()
 		if(!Tooltip.m_OnScreen)
 			return;
 
+		// EClient: the rects and the mouse position below are all in ui coordinates, say so rather
+		// than inheriting whichever mapping the previous component left behind
+		Ui()->MapScreen();
+
 		// Reset hover time if a different tooltip is active.
 		// Only reset hover time when rendering, because multiple tooltips can be
 		// activated in the same frame, but only the last one should be rendered.
@@ -76,7 +81,7 @@ void CTooltips::OnRender()
 		m_PreviousTooltip.emplace(Tooltip);
 
 		// Delay tooltip until 1 second passed. Start fade-in in the last 0.25 seconds.
-		constexpr float SecondsBeforeFadeIn = 0.75f;
+		const float SecondsBeforeFadeIn = Tooltip.m_FadeTime;
 		const float SecondsSinceActivation = (time_get() - m_HoverTime) / (float)time_freq();
 		if(SecondsSinceActivation < SecondsBeforeFadeIn)
 			return;

@@ -1051,4 +1051,28 @@ int str_utf8_comp_confusable(const char *str1, const char *str2);
  */
 int str_utf8_tolower_codepoint(int code);
 
+// <EClient
+/**
+ * Copies a prefix, cleans its spaces, and adds one separating space if nonempty.
+ * The source string is not modified.
+ *
+ * @ingroup Strings
+ */
+void str_format_prefix(char *dst, const char *pPrefix, int dst_size);
+
+template<int N>
+void str_format_prefix(char (&dst)[N], const char *pPrefix)
+{
+	str_format_prefix(dst, pPrefix, N);
+}
+
+void str_format_plural(char *dst, const char *pStr, int dst_size);
+
+template<int N>
+void str_format_plural(char (&dst)[N], const char *pStr)
+{
+	str_format_plural(dst, pStr, N);
+}
+// EClient>
+
 #endif

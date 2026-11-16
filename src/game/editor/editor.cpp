@@ -253,7 +253,7 @@ bool CEditor::CallbackCustomEntities(const char *pFilename, int StorageType, voi
 	return true;
 }
 
-void CEditor::DoAudioPreview(CUIRect View, const void *pPlayPauseButtonId, const void *pStopButtonId, const void *pSeekBarId, int SampleId)
+void CEditor::DoAudioPreview(CUIRect &View, const void *pPlayPauseButtonId, const void *pStopButtonId, const void *pSeekBarId, int SampleId)
 {
 	CUIRect Button, SeekBar;
 	// play/pause button
@@ -832,7 +832,10 @@ void CEditor::DoToolbarImages(CUIRect ToolBar)
 	if(pSelectedImage != nullptr)
 	{
 		char aLabel[64];
-		str_format(aLabel, sizeof(aLabel), "Size: %" PRIzu " × %" PRIzu, pSelectedImage->m_Width, pSelectedImage->m_Height);
+		if(pSelectedImage->m_External)
+			str_format(aLabel, sizeof(aLabel), "Size: %" PRIzu " × %" PRIzu " (external)", pSelectedImage->m_Width, pSelectedImage->m_Height);
+		else
+			str_format(aLabel, sizeof(aLabel), "Size: %" PRIzu " × %" PRIzu " (%.2f KB in map)", pSelectedImage->m_Width, pSelectedImage->m_Height, pSelectedImage->m_CompressedSize / 1024.0f);
 		Ui()->DoLabel(&ToolBarBottom, aLabel, 12.0f, TEXTALIGN_ML);
 	}
 }
@@ -858,15 +861,12 @@ void CEditor::DoToolbarSounds(CUIRect ToolBar)
 	{
 		static int s_PlayPauseButton, s_StopButton, s_SeekBar = 0;
 		DoAudioPreview(ToolBarBottom, &s_PlayPauseButton, &s_StopButton, &s_SeekBar, m_ToolbarPreviewSound);
-	}
-}
 
-static void Rotate(const CPoint *pCenter, CPoint *pPoint, float Rotation)
-{
-	int x = pPoint->x - pCenter->x;
-	int y = pPoint->y - pCenter->y;
-	pPoint->x = (int)(x * std::cos(Rotation) - y * std::sin(Rotation) + pCenter->x);
-	pPoint->y = (int)(x * std::sin(Rotation) + y * std::cos(Rotation) + pCenter->y);
+		char aBuf[32];
+		str_format(aBuf, sizeof(aBuf), "- %.2f KB in map", pSelectedSound->m_CompressedSize / 1024.0f);
+		ToolBarBottom.VSplitLeft(5.0f, nullptr, &ToolBarBottom);
+		Ui()->DoLabel(&ToolBarBottom, aBuf, 12.0f, TEXTALIGN_ML);
+	}
 }
 
 void CEditor::DoSoundSource(int LayerIndex, CSoundSource *pSource, int Index)
@@ -1591,8 +1591,8 @@ void CEditor::DoQuad(int LayerIndex, const std::shared_ptr<CLayerQuads> &pLayer,
 					for(int v = 0; v < 4; v++)
 					{
 						pCurrentQuad->m_aPoints[v] = s_vvRotatePoints[i][v];
-						Rotate(&pCurrentQuad->m_aPoints[4], &pCurrentQuad->m_aPoints[v], s_RotateAngle);
 					}
+					RotatePoints(pCurrentQuad->m_aPoints[4], pCurrentQuad->m_aPoints, 4, s_RotateAngle);
 				}
 
 				s_RotateAngle += Ui()->MouseDeltaX() * (Input()->ShiftIsPressed() ? 0.0001f : 0.002f);
@@ -2113,19 +2113,17 @@ void CEditor::DoQuadEnvelopes(const CLayerQuads *pLayerQuads)
 
 			const CPoint *pPoints;
 			CPoint aRotated[4];
-			if(Rotation != 0.0f)
-			{
-				std::copy_n(pQuad->m_aPoints, std::size(aRotated), aRotated);
-				for(auto &Point : aRotated)
-				{
-					Rotate(&pQuad->m_aPoints[4], &Point, Rotation);
-				}
-				pPoints = aRotated;
-			}
-			else
+			if(Rotation == 0.0f)
 			{
 				pPoints = pQuad->m_aPoints;
 			}
+			else
+			{
+				std::copy_n(pQuad->m_aPoints, std::size(aRotated), aRotated);
+				RotatePoints(pQuad->m_aPoints[4], aRotated, std::size(aRotated), Rotation);
+				pPoints = aRotated;
+			}
+
 			Graphics()->QuadsSetSubsetFree(
 				fx2f(pQuad->m_aTexcoords[0].x), fx2f(pQuad->m_aTexcoords[0].y),
 				fx2f(pQuad->m_aTexcoords[1].x), fx2f(pQuad->m_aTexcoords[1].y),
@@ -3060,13 +3058,12 @@ bool CEditor::ReplaceImage(const char *pFilename, int StorageType, bool CheckDup
 	}
 
 	std::shared_ptr<CEditorImage> pImg = Map()->SelectedImage();
+	ConvertToRgba(ImgInfo);
+	DilateImage(ImgInfo);
 	pImg->CEditorImage::Free();
 	*pImg = std::move(ImgInfo);
 	str_copy(pImg->m_aName, aBuf);
 	pImg->m_External = IsVanillaImage(pImg->m_aName);
-
-	ConvertToRgba(*pImg);
-	DilateImage(*pImg);
 
 	pImg->m_Automapper.Load(pImg->m_aName);
 	int TextureLoadFlag = Graphics()->TextureLoadFlags();
@@ -3116,12 +3113,11 @@ bool CEditor::AddImage(const char *pFilename, int StorageType, void *pUser)
 	}
 
 	std::shared_ptr<CEditorImage> pImg = std::make_shared<CEditorImage>(pEditor->Map());
+	ConvertToRgba(ImgInfo);
+	DilateImage(ImgInfo);
 	*pImg = std::move(ImgInfo);
 
 	pImg->m_External = IsVanillaImage(aBuf);
-
-	ConvertToRgba(*pImg);
-	DilateImage(*pImg);
 
 	int TextureLoadFlag = pEditor->Graphics()->TextureLoadFlags();
 	if(pImg->m_Width % 16 != 0 || pImg->m_Height % 16 != 0)
@@ -3180,8 +3176,7 @@ bool CEditor::AddSound(const char *pFilename, int StorageType, void *pUser)
 	// add sound
 	std::shared_ptr<CEditorSound> pSound = std::make_shared<CEditorSound>(pEditor->Map());
 	pSound->m_SoundId = SoundId;
-	pSound->m_DataSize = DataSize;
-	pSound->m_pData = pData;
+	pSound->SetData(pData, DataSize);
 	str_copy(pSound->m_aName, aBuf);
 	pEditor->Map()->m_vpSounds.push_back(pSound);
 
@@ -3234,13 +3229,10 @@ bool CEditor::ReplaceSound(const char *pFilename, int StorageType, bool CheckDup
 
 	// unload sample
 	Sound()->UnloadSample(pSound->m_SoundId);
-	free(pSound->m_pData);
-
 	// replace sound
 	str_copy(pSound->m_aName, aBuf);
 	pSound->m_SoundId = SoundId;
-	pSound->m_pData = pData;
-	pSound->m_DataSize = DataSize;
+	pSound->SetData(pData, DataSize);
 
 	Map()->SelectSound(pSound);
 	OnDialogClose();

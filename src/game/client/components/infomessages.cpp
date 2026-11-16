@@ -2,6 +2,7 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include "infomessages.h"
 
+#include <base/str.h>
 #include <base/time.h>
 
 #include <engine/graphics.h>
@@ -17,6 +18,8 @@
 #include <game/client/prediction/entities/character.h>
 #include <game/client/prediction/gameworld.h>
 #include <game/localization.h>
+
+#include <optional>
 
 static constexpr float ROW_HEIGHT = 46.0f;
 static constexpr float FONT_SIZE = 36.0f;
@@ -137,6 +140,19 @@ void CInfoMessages::AddInfoMsg(const CInfoMsg &InfoMsg)
 	DeleteTextContainers(m_aInfoMsgs[m_InfoMsgCurrent]);
 	m_aInfoMsgs[m_InfoMsgCurrent] = InfoMsg;
 	CreateTextContainersIfNotCreated(m_aInfoMsgs[m_InfoMsgCurrent]);
+
+	for(int i = 0; i < InfoMsg.m_TeamSize; i++)
+	{
+		const int ClientId = InfoMsg.m_aVictimIds[i];
+		for(int Dummy = 0; Dummy < NUM_DUMMIES; Dummy++)
+		{
+			if(ClientId == GameClient()->m_aLocalIds[Dummy])
+			{
+				// Could be abused by servers
+				GameClient()->OnSelfDeath(Dummy);
+			}
+		}
+	}
 
 	Graphics()->MapScreen(ScreenRect);
 }
@@ -307,7 +323,8 @@ void CInfoMessages::OnRaceFinishMessage(const CNetMsg_Sv_RaceFinish *pMsg)
 	AddInfoMsg(Finish);
 }
 
-void CInfoMessages::RenderKillMsg(const CInfoMsg &InfoMsg, float x, float y)
+// EClient: returns the leftmost x it drew to, so the kill feed can measure its own width
+float CInfoMessages::RenderKillMsg(const CInfoMsg &InfoMsg, float x, float y)
 {
 	ColorRGBA TextColor;
 	if(InfoMsg.m_VictimDDTeam)
@@ -391,9 +408,12 @@ void CInfoMessages::RenderKillMsg(const CInfoMsg &InfoMsg, float x, float y)
 			TextRender()->RenderTextContainer(InfoMsg.m_KillerTextContainerIndex, TextColor, TextRender()->DefaultTextOutlineColor(), x, y + (ROW_HEIGHT - FONT_SIZE) / 2.0f);
 		}
 	}
+
+	return x; // EClient
 }
 
-void CInfoMessages::RenderFinishMsg(const CInfoMsg &InfoMsg, float x, float y)
+// EClient: returns the leftmost x it drew to
+float CInfoMessages::RenderFinishMsg(const CInfoMsg &InfoMsg, float x, float y)
 {
 	// render time diff
 	if(InfoMsg.m_DiffTextContainerIndex.Valid())
@@ -430,6 +450,7 @@ void CInfoMessages::RenderFinishMsg(const CInfoMsg &InfoMsg, float x, float y)
 	x -= 24.0f;
 	const int Emote = InfoMsg.m_RecordPersonal ? EMOTE_HAPPY : EMOTE_NORMAL;
 	RenderTools()->RenderIdleTeeAtCenter(&InfoMsg.m_apVictimManagedTeeRenderInfos[0]->TeeRenderInfo(), vec2(x, y + ROW_HEIGHT / 2.0f), Emote, vec2(-1, 0));
+	return x;
 }
 
 void CInfoMessages::OnRender()
@@ -443,14 +464,22 @@ void CInfoMessages::OnRender()
 	Graphics()->MapScreenToSize(Width, Height);
 	Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
 
-	int Showfps = g_Config.m_ClShowfps;
-#if defined(CONF_VIDEORECORDER)
-	if(IVideo::Current())
-		Showfps = 0;
-#endif
+	// EClient: the fps counter and prediction time used to be subtracted out by hand here. The
+	// HUD layout pushes this clear of them now, so it only says where it sits on its own.
 	const float StartX = Width - 10.0f;
-	const float StartY = 30.0f + (Showfps ? 100.0f : 0.0f) + (g_Config.m_ClShowpred && Client()->State() != IClient::STATE_DEMOPLAYBACK ? 100.0f : 0.0f);
+	const float StartY = 30.0f;
 
+	// EClient: being covered stops it drawing, not running. Returning outright would take the
+	// expiry below with it, and messages would sit in the ring buffer for as long as the scoreboard
+	// was up, crowding out newer ones.
+	CHudLayout &Layout = GameClient()->m_Hud.HudLayout();
+	const bool Occluded = Layout.IsOccluded(EHudElement::KILL_FEED);
+
+	std::optional<CHudLayout::CScope> Scope;
+	if(!Occluded)
+		Scope.emplace(&Layout, EHudElement::KILL_FEED, vec2(Width, Height));
+
+	float Left = StartX;
 	float y = StartY;
 	for(int i = 1; i <= MAX_INFOMSGS; i++)
 	{
@@ -465,17 +494,28 @@ void CInfoMessages::OnRender()
 			continue;
 		}
 
+		if(Occluded) // EClient
+			continue;
+
 		CreateTextContainersIfNotCreated(InfoMsg);
 
 		if(InfoMsg.m_Type == EType::TYPE_KILL && g_Config.m_ClShowKillMessages)
 		{
-			RenderKillMsg(InfoMsg, StartX, y);
+			Left = std::min(Left, RenderKillMsg(InfoMsg, StartX, y));
 			y += ROW_HEIGHT;
 		}
 		else if(InfoMsg.m_Type == EType::TYPE_FINISH && g_Config.m_ClShowFinishMessages)
 		{
-			RenderFinishMsg(InfoMsg, StartX, y);
+			Left = std::min(Left, RenderFinishMsg(InfoMsg, StartX, y));
 			y += ROW_HEIGHT;
 		}
+	}
+
+	// EClient: reported in HUD units, which is the space the layout works in
+	if(!Occluded && y > StartY)
+	{
+		const float ToHud = 300.0f / Height;
+		Layout.ReportNaturalRect(EHudElement::KILL_FEED,
+			vec2(Left * ToHud, StartY * ToHud), vec2((StartX - Left) * ToHud, (y - StartY) * ToHud));
 	}
 }

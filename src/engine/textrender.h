@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 enum
 {
@@ -194,6 +195,9 @@ class ITextRender : public IInterface
 {
 	MACRO_INTERFACE("textrender")
 public:
+	virtual std::vector<std::string> *GetCustomFaces() = 0; // TClient
+	virtual void SetCustomFace(const char *pFace) = 0; // TClient
+
 	virtual bool LoadFonts() = 0;
 	virtual void SetFontPreset(EFontPreset FontPreset) = 0;
 	virtual void SetFontLanguageVariant(const char *pLanguageFile) = 0;
@@ -245,6 +249,17 @@ public:
 
 	virtual void OnPreWindowResize() = 0;
 	virtual void OnWindowResize() = 0;
+
+	/**
+	 * Draws pText with the EClient chat color codes applied. Text outside of a code is drawn
+	 * with the current @link TextColor @endlink, "&NN"/"&NNS" override it and "&x" goes back to it.
+	 * The codes are stripped when a text container is given and kept visible otherwise, so that
+	 * they stay editable while typing.
+	 */
+	virtual void ColorParsing(const char *pText, CTextCursor *pCursor, STextContainerIndex *pTextContainerIndex = nullptr) = 0;
+	virtual ColorRGBA HSVtoRGB(float h, float s, float v) = 0;
+
+	virtual std::string RemoveColorCodes(const char *pText) = 0;
 };
 
 class IEngineTextRender : public ITextRender

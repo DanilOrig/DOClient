@@ -8,6 +8,7 @@
 #include <base/mem.h>
 #include <base/str.h>
 
+#include <engine/external/tinyexpr.h>
 #include <engine/graphics.h>
 #include <engine/keys.h>
 #include <engine/shared/config.h>
@@ -482,7 +483,12 @@ STextBoundingBox CLineInput::Render(const CUIRect *pRect, float FontSize, int Al
 			Cursor.m_SelectionStart = str_utf8_offset_bytes_to_chars(pDisplayStr, DisplayCursorOffset);
 			Cursor.m_SelectionEnd = str_utf8_offset_bytes_to_chars(pDisplayStr, DisplayCompositionEnd);
 			TextRender()->TextSelectionColor(1.0f, 1.0f, 1.0f, 0.8f);
-			TextRender()->TextEx(&Cursor, pDisplayStr);
+			// EClient
+			if(g_Config.m_ClChatColorParsing)
+				TextRender()->ColorParsing(pDisplayStr, &Cursor);
+			else
+				TextRender()->TextEx(&Cursor, pDisplayStr);
+
 			TextRender()->TextSelectionColor(TextRender()->DefaultTextSelectionColor());
 		}
 		else if(GetSelectionLength())
@@ -494,14 +500,22 @@ STextBoundingBox CLineInput::Render(const CUIRect *pRect, float FontSize, int Al
 			Cursor.m_CalculateSelectionMode = m_MouseSelection.m_Selecting ? TEXT_CURSOR_SELECTION_MODE_CALCULATE : TEXT_CURSOR_SELECTION_MODE_SET;
 			Cursor.m_SelectionStart = str_utf8_offset_bytes_to_chars(pDisplayStr, Start);
 			Cursor.m_SelectionEnd = str_utf8_offset_bytes_to_chars(pDisplayStr, End);
-			TextRender()->TextEx(&Cursor, pDisplayStr);
+			// EClient
+			if(g_Config.m_ClChatColorParsing)
+				TextRender()->ColorParsing(pDisplayStr, &Cursor);
+			else
+				TextRender()->TextEx(&Cursor, pDisplayStr);
 		}
 		else
 		{
 			Cursor.m_CursorMode = m_MouseSelection.m_Selecting ? TEXT_CURSOR_CURSOR_MODE_CALCULATE : TEXT_CURSOR_CURSOR_MODE_SET;
 			Cursor.m_CursorCharacter = str_utf8_offset_bytes_to_chars(pDisplayStr, CaretOffset);
 			Cursor.m_CalculateSelectionMode = m_MouseSelection.m_Selecting ? TEXT_CURSOR_SELECTION_MODE_CALCULATE : TEXT_CURSOR_SELECTION_MODE_NONE;
-			TextRender()->TextEx(&Cursor, pDisplayStr);
+			// EClient
+			if(g_Config.m_ClChatColorParsing)
+				TextRender()->ColorParsing(pDisplayStr, &Cursor);
+			else
+				TextRender()->TextEx(&Cursor, pDisplayStr);
 		}
 
 		if(Cursor.m_CursorMode == TEXT_CURSOR_CURSOR_MODE_CALCULATE && Cursor.m_CursorCharacter >= 0)
@@ -689,10 +703,18 @@ void CLineInputNumber::SetInteger(int Number, int Base, int HexPrefix)
 		Set(aBuf);
 }
 
+// <EClient
 int CLineInputNumber::GetInteger(int Base) const
 {
+	if(Base == 10)
+	{
+		double Result = te_interp(GetString(), nullptr);
+		if(std::isfinite(Result))
+			return (int)std::round(Result);
+	}
 	return str_toint_base(GetString(), Base);
 }
+// EClient>
 
 void CLineInputNumber::SetInteger64(int64_t Number, int Base, int HexPrefix)
 {
@@ -712,10 +734,18 @@ void CLineInputNumber::SetInteger64(int64_t Number, int Base, int HexPrefix)
 		Set(aBuf);
 }
 
+// <EClient
 int64_t CLineInputNumber::GetInteger64(int Base) const
 {
+	if(Base == 10)
+	{
+		double Result = te_interp(GetString(), nullptr);
+		if(std::isfinite(Result))
+			return (int64_t)std::round(Result);
+	}
 	return str_toint64_base(GetString(), Base);
 }
+// EClient>
 
 void CLineInputNumber::SetFloat(float Number)
 {
@@ -725,7 +755,10 @@ void CLineInputNumber::SetFloat(float Number)
 		Set(aBuf);
 }
 
+// <EClient
 float CLineInputNumber::GetFloat() const
 {
-	return str_tofloat(GetString());
+	// return str_tofloat(GetString());
+	return (float)te_interp(GetString(), nullptr);
 }
+// EClient>

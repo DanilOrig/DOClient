@@ -16,9 +16,9 @@
 #include <engine/shared/snapshot.h>
 
 #include <generated/protocol7.h>
-#include <generated/protocolglue.h>
 
 #include <game/client/prediction/gameworld.h>
+#include <game/client/prediction/quad_zones.h>
 #include <game/client/race.h>
 #include <game/collision.h>
 #include <game/gamecore.h>
@@ -41,10 +41,10 @@
 #include "components/debughud.h"
 #include "components/effects.h"
 #include "components/emoticon.h"
+#include "components/entity/hud/hud_editor.h" // EClient
 #include "components/flow.h"
 #include "components/freezebars.h"
 #include "components/ghost.h"
-#include "components/gradient.h"
 #include "components/hud.h"
 #include "components/important_alert.h"
 #include "components/infomessages.h"
@@ -62,6 +62,8 @@
 #include "components/players.h"
 #include "components/race_demo.h"
 #include "components/scoreboard.h"
+#include "components/gradient.h"
+#include "components/spectateyou.h"
 #include "components/skins.h"
 #include "components/skins7.h"
 #include "components/sounds.h"
@@ -69,10 +71,85 @@
 #include "components/statboard.h"
 #include "components/touch_controls.h"
 #include "components/voting.h"
-#include "components/warlist.h"
 
+// Entity
+#include "components/entity/anti_spawn_block.h"
+#include "components/entity/auto_dummy_connect.h"
+#include "components/entity/browser_map_preview.h"
+#include "components/entity/chat_bubbles.h"
+#include "components/entity/entity.h"
+#include "components/entity/freeze_kill.h"
+#include "components/entity/info.h"
+#include "components/entity/local_practice.h"
+#include "components/entity/map_finish_browser.h"
+#include "components/entity/map_overview.h"
+#include "components/entity/mediaplayer/media_player.h"
+#include "components/entity/moderation/mod_menu.h"
+#include "components/entity/moderation/webhook.h"
+#include "components/entity/moving_tiles.h"
+#include "components/entity/performance_statistics.h"
+#include "components/entity/physicball.h"
+#include "components/entity/spec_pause_radio.h"
+#include "components/entity/wheels/bindwheel.h"
+#include "components/entity/wheels/player_actions.h"
+
+// Tater
+#include "component.h"
+#include "components/entity/warlist.h"
+#include "components/tclient/bg_draw.h"
+#include "components/tclient/bindchat.h"
+#include "components/tclient/custom_communities.h"
+#include "components/tclient/mumble.h"
+#include "components/tclient/outlines.h"
+#include "components/tclient/player_indicator.h"
+#include "components/tclient/rainbow.h"
+#include "components/tclient/scripting.h"
+#include "components/tclient/skinprofiles.h"
+#include "components/tclient/statusbar.h"
+#include "components/tclient/trails.h"
+#include "components/tclient/translate.h"
+#include "ui.h"
+
+#include <base/types.h>
+
+#include <engine/client/client.h>
+#include <engine/client/serverbrowser.h>
+#include <engine/config.h>
+#include <engine/demo.h>
+#include <engine/editor.h>
+#include <engine/friends.h>
+#include <engine/graphics.h>
+#include <engine/http.h>
+#include <engine/input.h>
+#include <engine/kernel.h>
+#include <engine/serverbrowser.h>
+#include <engine/shared/packer.h>
+#include <engine/shared/protocol.h>
+#include <engine/shared/protocol7.h>
+#include <engine/sound.h>
+#include <engine/storage.h>
+#include <engine/textrender.h>
+
+#include <generated/protocol.h>
+
+#include <game/map/render_interfaces.h>
+
+#include <bitset>
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
+
+// EClient
+union ColorIdentifier
+{
+	int m_Color = 0;
+	unsigned char m_B[4];
+};
+
+static constexpr int ENTITY_CLIENT_ID_BODY = 101;
+static constexpr int ENTITY_CLIENT_ID_FEET = 99;
 
 class IMap;
 
@@ -173,8 +250,8 @@ public:
 	CControls m_Controls;
 	CEffects m_Effects;
 	CScoreboard m_Scoreboard;
-	CWarList m_WarList;
 	CGradient m_Gradient;
+	CSpectateYou m_SpectateYou;
 	CStatboard m_Statboard;
 	CSounds m_Sounds;
 	CEmoticon m_Emoticon;
@@ -199,6 +276,45 @@ public:
 	CRaceDemo m_RaceDemo;
 	CGhost m_Ghost;
 	CLocalServer m_LocalServer;
+
+	// Entity
+	CAntiSpawnBlock m_AntiSpawnBlock;
+	CAutoDummyConnect m_AutoDummyConnect;
+	CBrowserMapPreview m_BrowserMapPreview;
+	CChatBubbles m_ChatBubbles;
+	CEClient m_EClient;
+	CEntityInfo m_EntityInfo;
+	CFreezeKill m_FreezeKill;
+	CHudEditor m_HudEditor;
+	CLocalPractice m_LocalPractice;
+	CMapFinishBrowser m_MapFinishBrowser;
+	CMapOverview m_MapOverview;
+	CMediaViewer m_MediaViewer;
+	CMenusModeration m_MenusModeration;
+	CPerformanceStatistics m_PerformanceStatistics;
+	CPhysicBalls m_PhysicBalls;
+	CPlayerActions m_PlayerActions;
+	CSpecPauseRadio m_SpecPauseRadio;
+	CWebhook m_Webhook;
+
+	CMovingTiles m_MovingTilesBackground = CMovingTiles{false};
+	CMovingTiles m_MovingTilesForeground = CMovingTiles{true};
+
+	// T-Client
+	CBindChat m_Bindchat;
+	CBindWheel m_Bindwheel;
+	CBgDraw m_BgDraw;
+	CPlayerIndicator m_PlayerIndicator;
+	COutlines m_Outlines;
+	CMumble m_Mumble;
+	CRainbow m_Rainbow;
+	CSkinProfiles m_SkinProfiles;
+	CStatusBar m_StatusBar;
+	CTrails m_Trails;
+	CTranslate m_Translate;
+	CWarList m_WarList;
+	CScripting m_Scripting;
+	CCustomCommunities m_CustomCommunities;
 
 private:
 	std::vector<class CComponent *> m_vpAll;
@@ -230,6 +346,9 @@ private:
 
 	CLayers m_Layers;
 	CCollision m_Collision;
+	// <FoxNet
+	CQuadZones m_QuadZones;
+	// FoxNet>
 	CUi m_UI;
 	CRaceHelper m_RaceHelper;
 
@@ -243,7 +362,10 @@ private:
 	int m_aLastNewPredictedTick[NUM_DUMMIES];
 
 	int m_LastRoundStartTick;
-	int m_LastRaceTick;
+	int m_aLastRaceTick[NUM_DUMMIES];
+	// Keeps m_aLastRaceTick of the connection we are currently not playing on up to date,
+	// the active one is updated from m_Snap in OnNewSnapshot.
+	void UpdateInactiveRaceTick();
 
 	int m_LastFlagCarrierRed;
 	int m_LastFlagCarrierBlue;
@@ -278,6 +400,7 @@ private:
 	// only used in OnNewSnapshot
 	bool m_GameOver = false;
 	bool m_GamePaused = false;
+	int m_PrevLocalId = -1; // TClient
 
 public:
 	IKernel *Kernel() { return IInterface::Kernel(); }
@@ -327,11 +450,23 @@ public:
 	bool m_NewPredictedTick;
 	int m_aFlagDropTick[2];
 
+	// EClient: whether we've ever received a NETMSGTYPE_SV_PREINPUT this connection.
+	// Used to keep fast input's "flux" mode from extrapolating other tees before we
+	// actually have any server-confirmed hint about their input.
+	bool m_ReceivedPreInput = false;
+
 	enum
 	{
 		SERVERMODE_PURE = 0,
 		SERVERMODE_MOD,
 		SERVERMODE_PUREMOD,
+	};
+
+	// EClient: fast input algorithms, selected via ec_fast_input_mode
+	enum
+	{
+		FAST_INPUT_MODE_CLASSIC = 0, // offset in milliseconds, other tees mirror our own amount 1:1 or get nothing
+		FAST_INPUT_MODE_FLUX, // offset in ticks, other tees normally capped to one tick until the server sends a pre-input
 	};
 	int m_ServerMode;
 	CGameInfo m_GameInfo;
@@ -494,9 +629,22 @@ public:
 		int m_FreezeEnd;
 		bool m_DeepFrozen;
 		bool m_LiveFrozen;
+		// <FoxNet
+		// Standing in a QFr quad, which the server never flags as CHARACTERFLAG_IN_FREEZE
+		bool m_InsideQuadFreeze;
+		// FoxNet>
 
 		CCharacterCore m_Predicted;
 		CCharacterCore m_PrevPredicted;
+
+		// TClient
+		CCharacterCore m_RegularPredicted;
+		vec2 m_ImprovedPredPos = vec2(0, 0);
+		vec2 m_PrevImprovedPredPos = vec2(0, 0);
+		bool m_ValidAntipingSmooth = false;
+		float m_Uncertainty = 1.0f;
+		float m_VolleyBallAngle = 0.0f;
+		bool m_IsVolleyBall = false;
 
 		std::shared_ptr<CManagedTeeRenderInfo> m_pSkinInfo = nullptr; // this is what the server reports
 		CTeeRenderInfo m_RenderInfo; // this is what we use
@@ -558,9 +706,31 @@ public:
 
 		// 0.7 Skin
 		CSixup m_aSixup[NUM_DUMMIES];
+
+		// EClient
+		bool m_IsEntityClientUser;
 	};
 
 	CClientData m_aClients[MAX_CLIENTS];
+	// DOClient: pending swap requests (adapted from the DDNet community swap timer, zlib licence)
+	struct SSwapTimerEntry
+	{
+		int m_FromClientId;
+		int m_ToClientId;
+		int m_SwapTick;
+	};
+	std::vector<SSwapTimerEntry> m_vSwapTimerEntries;
+	void SwapTimerAdd(int FromClientId, int ToClientId);
+	void SwapTimerRemove(int FromClientId, int ToClientId);
+	void SwapTimerRemoveAll(int ClientId);
+	void SwapTimerRemoveSwapped(int ClientId0, int ClientId1);
+	void SwapTimerOnMessage(int MsgId, void *pRawMsg, bool Dummy);
+	int SwapTimerFindClientId(const char *pName) const;
+	// DOClient: BestClient users detected via their public API
+	bool m_aBestClientTag[MAX_CLIENTS] = {};
+	std::shared_ptr<IHttpRequest> m_pBestClientRequest;
+	char m_aBestClientServerAddress[128] = "";
+	int64_t m_BestClientNextRequest = 0;
 
 	class CClientStats
 	{
@@ -614,6 +784,7 @@ public:
 	void OnConnected() override;
 	void OnRender() override;
 	void OnUpdate() override;
+	void UpdateClientTypesBestClient();
 	void OnDummyDisconnect() override;
 	virtual void OnRelease();
 	void OnInit() override;
@@ -678,9 +849,11 @@ public:
 	bool GotWantedSkin7(bool Dummy);
 	void SendInfo(bool Start);
 	void SendDummyInfo(bool Start) override;
-	void SendKill() const;
+	void SendKill(); // EClient: no longer const, the practice world answers it locally
 	void SendReadyChange7(); // NOLINT(readability-make-member-function-const)
 
+	// EClient
+	bool GetDummyFastInput(CNetObj_PlayerInput &DummyFastInput, const CNetObj_PlayerInput *pDummyInputData, const CCharacter *pDummyChar, int LocalTee, int DummyTee) const;
 	void ApplyPreInputs(int Tick, bool Direct, CGameWorld &GameWorld);
 
 	int m_aNextChangeInfo[NUM_DUMMIES];
@@ -699,8 +872,13 @@ public:
 
 	int IntersectCharacter(vec2 HookPos, vec2 NewPos, vec2 &NewPos2, int OwnId, vec2 *pPlayerPosition = nullptr);
 
-	int LastRaceTick() const;
-	int CurrentRaceTime() const;
+	// Conn defaults to the connection we are currently playing on
+	int LastRaceTick(int Conn) const;
+	int LastRaceTick() const { return LastRaceTick(g_Config.m_ClDummy); }
+	int CurrentRaceTime(int Conn) const;
+	int CurrentRaceTime() const { return CurrentRaceTime(g_Config.m_ClDummy); }
+	bool StartedRace(int Conn) const { return m_aLastRaceTick[Conn] != -1; }
+	bool StartedRace() const { return StartedRace(g_Config.m_ClDummy); }
 
 	bool IsTeamPlay() const;
 	int MinTeamSize() const;
@@ -723,20 +901,11 @@ public:
 	CGameWorld m_GameWorld;
 	CGameWorld m_PredictedWorld;
 	CGameWorld m_PrevPredictedWorld;
-
-	// fast input
-	bool CheckNewInput() override;
-	bool GetDummyFastInput(CNetObj_PlayerInput &DummyFastInput, const CNetObj_PlayerInput *pDummyInputData, const CCharacter *pDummyChar, int LocalTee, int DummyTee) const;
-	vec2 GetFastInputPos(int ClientId);
-
-	// client type indicator
-	static void ConClientDump(IConsole::IResult *pResult, void *pUserData);
-	void UpdateClientTypesBestClient();
-	bool m_aBestClientTag[MAX_CLIENTS] = {};
-	std::shared_ptr<class IHttpRequest> m_pBestClientRequest;
-	int64_t m_BestClientNextRequest = 0;
-	char m_aBestClientServerAddress[128] = "";
-
+	// TClient
+	CGameWorld m_RegularPredictedWorld;
+	CGameWorld m_PrevRegularPredictedWorld;
+	CGameWorld m_ExtraPredictedWorld;
+	CGameWorld m_PredSmoothingWorld;
 
 	std::vector<SSwitchers> &Switchers() { return m_GameWorld.m_Core.m_vSwitchers; }
 	std::vector<SSwitchers> &PredSwitchers() { return m_PredictedWorld.m_Core.m_vSwitchers; }
@@ -744,6 +913,14 @@ public:
 	void DummyResetInput() override;
 	void Echo(const char *pString) override;
 	bool IsOtherTeam(int ClientId) const;
+	/**
+	 * EClient: the opacity a tee and everything drawn with it -- hook, hook line, freeze bar, name
+	 * plate, trail -- should be rendered at.
+	 *
+	 * This was the same ternary written out at a dozen call sites, which is why the practice world
+	 * fading bystanders kept missing some of them. Anything that fades a tee asks here instead.
+	 */
+	float TeeRenderAlpha(int ClientId) const;
 	int SwitchStateTeam() const;
 	bool IsLocalCharSuper() const;
 	bool CanDisplayWarning() const override;
@@ -926,6 +1103,16 @@ public:
 
 	const std::vector<CSnapEntities> &SnapEntities() { return m_vSnapEntities; }
 
+	// TClient
+	vec2 GetSmoothPos(int ClientId);
+	vec2 GetFreezePos(int ClientId);
+	vec2 GetFastInputPos(int ClientId);
+	bool IsFastInputLocalClient(int ClientId) const;
+	bool HasPredPos(int ClientId, int Tick) const;
+	float GetFastInputOffsetTicks() const;
+	float GetFastInputOffsetTicksOthers() const;
+	float GetFastInputOffsetTicksFor(int ClientId) const;
+
 	int m_MultiViewTeam;
 	float m_MultiViewPersonalZoom;
 	bool m_MultiViewShowHud;
@@ -938,6 +1125,8 @@ public:
 	int m_MapBestTimeSeconds;
 	int m_MapBestTimeMillis;
 	char m_aMapDescription[512];
+
+	bool m_CanReceivePoints;
 
 private:
 	std::unique_ptr<IMap> m_pMap;
@@ -965,43 +1154,31 @@ private:
 	std::vector<std::shared_ptr<CManagedTeeRenderInfo>> m_vpManagedTeeRenderInfos;
 	void UpdateManagedTeeRenderInfos();
 
+	friend class CLocalPractice; // EClient: plays its own world's predicted events
+
 	void UpdateLocalTuning();
 	void UpdatePrediction();
 	void UpdateSpectatorCursor();
 	void UpdateRenderedCharacters();
-	void HandlePredictedEvents(int Tick);
+	// EClient: pWorld lets the practice world play its own events; defaults to the predicted one
+	void HandlePredictedEvents(int Tick, CGameWorld *pWorld = nullptr);
 
 	void OnInput(const IInput::CEvent &Event);
 
 	int m_aLastUpdateTick[MAX_CLIENTS] = {0};
 	void DetectStrongHook();
 
-	vec2 GetSmoothPos(int ClientId);
-
 	int m_IsDummySwapping;
 	CCharOrder m_CharOrder;
 	int m_aSwitchStateTeam[NUM_DUMMIES];
 
-public:
-	// swap timer (based on DDNet/Rushie swap timer)
-	struct SSwapTimerEntry
-	{
-		int m_FromClientId;
-		int m_ToClientId;
-		int m_SwapTick;
-	};
-	std::vector<SSwapTimerEntry> m_vSwapTimerEntries;
-	void SwapTimerAdd(int FromClientId, int ToClientId);
-	void SwapTimerRemove(int FromClientId, int ToClientId);
-	void SwapTimerRemoveAll(int ClientId);
-
-private:
-	void SwapTimerOnMessage(int MsgId, void *pRawMsg, bool Dummy);
-	void SwapTimerRemoveSwapped(int ClientId0, int ClientId1);
-	int SwapTimerFindClientId(const char *pName) const;
-
 	void LoadMapSettings();
 	CMapBugs m_MapBugs;
+	// <FoxNet
+	// What the map turns on for FoxNet, the server reads the same settings
+	bool m_MapMovingTiles = false;
+	bool m_MapQStopaGivesDj = false;
+	// FoxNet>
 
 	// tunings for every zone on the map, 0 is a global tune
 	CTuningParams m_aTuningList[TuneZone::NUM];
@@ -1039,6 +1216,35 @@ private:
 
 	void OnSaveCodeNetMessage(const CNetMsg_Sv_SaveCode *pMsg);
 	void StoreSave(const char *pTeamMembers, const char *pGeneratedCode) const;
+
+public:
+	// TClient
+	int m_SmoothTick = 0;
+	float m_SmoothIntraTick = 0;
+	bool CheckNewInput() override;
+	std::optional<CServerInfo> m_ConnectServerInfo = std::nullopt;
+	void SetConnectInfo(const NETADDR *pAddress) override;
+
+	// EClient
+	void OnFontChange();
+
+	void OnSelfDeath(bool Dummy) override;
+
+	void OnServerBrowserRefresh() override;
+	bool HasMapFinish(const char *pPlayerName, const char *pMapName, const char *pCommunity) const override { return m_MapFinishBrowser.HasEntry(pPlayerName, pMapName, pCommunity); }
+
+	void ClientMessage(const char *pString) override;
+	void OnConnect(int Conn) override;
+	void SetLastMovementTime() override;
+
+	void RequestEClientInfo() override;
+
+	// Get ClientId by Player Name
+	int GetClientId(const char *pName) override;
+	const char *GetClientName(int ClientId) override { return m_aClients[ClientId].m_aName; }
+	vec2 GetCursorWorldPos() const;
+
+	int m_WasWindowActive = 1;
 };
 
 ColorRGBA CalculateNameColor(ColorHSLA TextColorHSL);

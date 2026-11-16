@@ -18,6 +18,7 @@
 
 CEffects::CEffects()
 {
+	m_AddXhz = false;
 	m_Add5hz = false;
 	m_Add50hz = false;
 	m_Add100hz = false;
@@ -113,6 +114,7 @@ void CEffects::SparkleTrail(vec2 Pos, float Alpha)
 	p.SetDefault();
 	p.m_Spr = SPRITE_PART_SPARKLE;
 	p.m_Pos = Pos + random_direction() * random_float(40.0f);
+	p.m_Color = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClEffectColor));
 	p.m_Vel = vec2(0.0f, 0.0f);
 	p.m_LifeSpan = 0.5f;
 	p.m_StartSize = 0.0f;
@@ -389,17 +391,12 @@ void CEffects::Explosion(vec2 Pos, float Alpha)
 		p.m_StartAlpha = p.m_Color.a;
 		GameClient()->m_Particles.Add(CParticles::GROUP_GENERAL, &p);
 	}
+
+	GameClient()->m_PhysicBalls.OnExplosion(Pos, Alpha == 1.0f);
 }
 
 void CEffects::HammerHit(vec2 Pos, float Alpha, float Volume)
 {
-	if(g_Config.m_EcVisualRemoveHammerEffect)
-	{
-		if(g_Config.m_SndGame)
-			GameClient()->m_Sounds.PlayAt(CSounds::CHN_WORLD, SOUND_HAMMER_HIT, Volume, Pos);
-		return;
-	}
-
 	// add the explosion
 	CParticle p;
 	p.SetDefault();
@@ -416,6 +413,83 @@ void CEffects::HammerHit(vec2 Pos, float Alpha, float Volume)
 		GameClient()->m_Sounds.PlayAt(CSounds::CHN_WORLD, SOUND_HAMMER_HIT, Volume, Pos);
 }
 
+void CEffects::SparkleEffect(vec2 Pos, float Alpha)
+{
+	if(!m_AddXhz)
+		return;
+
+	ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f);
+	if(g_Config.m_ClEffectColors)
+		Color = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClEffectColor));
+
+	CParticle p;
+	p.SetDefault();
+	p.m_Spr = SPRITE_PART_SPARKLE;
+	p.m_Pos = Pos + random_direction() * random_float(40.0f);
+	p.m_Color = Color;
+	p.m_Vel = vec2(0, 0);
+	p.m_LifeSpan = 0.5f;
+	p.m_StartSize = 0.0f;
+	p.m_EndSize = random_float(20.0f, 30.0f);
+	p.m_UseAlphaFading = true;
+	p.m_StartAlpha = Alpha;
+	p.m_EndAlpha = std::min(0.2f, Alpha);
+	p.m_Collides = false;
+	GameClient()->m_Particles.Add(CParticles::GROUP_TRAIL_EXTRA, &p);
+}
+
+void CEffects::FireTrailEffect(vec2 Pos, float Alpha)
+{
+	if(!m_AddXhz)
+		return;
+
+	const float Changer = (round_to_int(static_cast<float>(time_get()) / time_freq() * 100) % 1000 / 100.f);
+
+	float RotSpeed = 5.0f + Changer;
+	if(Changer > 5.0f)
+		RotSpeed = 5.0f + (10 - Changer);
+
+	ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f);
+	if(g_Config.m_ClEffectColors)
+		Color = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClEffectColor));
+
+	CParticle p;
+	p.SetDefault();
+	p.m_Spr = SPRITE_PART_SMOKE;
+	p.m_Pos = Pos;
+	p.m_Color = Color;
+	p.m_Vel = vec2(0, 0);
+	p.m_LifeSpan = 0.5f;
+	p.m_StartSize = 35.0f;
+	p.m_EndSize = 25.0f;
+	p.m_Rotspeed = RotSpeed;
+	p.m_UseAlphaFading = true;
+	p.m_StartAlpha = Alpha - 0.2f;
+	p.m_EndAlpha = 0.0f;
+	GameClient()->m_Particles.Add(CParticles::GROUP_PROJECTILE_TRAIL, &p);
+}
+
+void CEffects::SwitchEffect(vec2 Pos, ColorRGBA Color, float Alpha)
+{
+	if(!m_AddXhz)
+		return;
+
+	CParticle p;
+	p.SetDefault();
+	p.m_Spr = SPRITE_PART_SPLAT02;
+	p.m_Pos = Pos;
+	p.m_Color = Color;
+	p.m_Vel = vec2(0, 0);
+	p.m_LifeSpan = 0.5f;
+	p.m_StartSize = 27.5f;
+	p.m_EndSize = 17.5f;
+	p.m_Rotspeed = 25.0f;
+	p.m_UseAlphaFading = true;
+	p.m_StartAlpha = Alpha;
+	p.m_EndAlpha = 0.0f;
+	GameClient()->m_Particles.Add(CParticles::GROUP_PROJECTILE_TRAIL, &p);
+}
+
 void CEffects::OnRender()
 {
 	const float Speed = GameClient()->GetAnimationPlaybackSpeed();
@@ -428,6 +502,15 @@ void CEffects::OnRender()
 	UpdateClock(m_Add5hz, m_LastUpdate5hz, 5);
 	UpdateClock(m_Add50hz, m_LastUpdate50hz, 50);
 	UpdateClock(m_Add100hz, m_LastUpdate100hz, 100);
+
+	static int64_t s_LastUpdate = 0;
+	if(time() - s_LastUpdate > time_freq() / (g_Config.m_ClEffectSpeed * Speed))
+	{
+		m_AddXhz = true;
+		s_LastUpdate = time();
+	}
+	else
+		m_AddXhz = false;
 
 	if(m_Add50hz)
 		GameClient()->m_Flow.Update();

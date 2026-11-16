@@ -45,18 +45,40 @@ def filter_cpp(filenames):
 
 
 def find_clang_format(version):
-	for binary in (
+	# Common paths for clang-format on different systems
+	common_paths = [
 		"clang-format",
 		f"clang-format-{version}",
 		f"/opt/clang-format-static/clang-format-{version}",
-	):
+	]
+
+	exact_paths = [
+		f"clang-format-{version}",
+		f"/opt/clang-format-static/clang-format-{version}",
+		"clang-format",
+	]
+
+	for binary in exact_paths:
 		try:
 			out = subprocess.check_output([binary, "--version"])
-		except FileNotFoundError:
+			version_output = out.decode("utf-8")
+			if f"clang-format version {version}." in version_output:
+				return binary
+		except (FileNotFoundError, subprocess.CalledProcessError):
 			continue
-		if f"clang-format version {version}." in out.decode("utf-8"):
+
+	# If exact version not found, try to find any working clang-format
+	print(f"Warning: clang-format version {version} not found, trying any available version...")
+	for binary in common_paths:
+		try:
+			out = subprocess.check_output([binary, "--version"])
+			version_output = out.decode("utf-8")
+			print(f"Found: {version_output.strip()}")
 			return binary
-	print(f"Found no clang-format {version}")
+		except (FileNotFoundError, subprocess.CalledProcessError):
+			continue
+
+	print(f"Found no clang-format (looking for version {version})")
 	sys.exit(-1)
 
 

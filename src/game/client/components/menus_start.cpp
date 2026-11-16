@@ -3,6 +3,9 @@
 #include "menus_start.h"
 
 #include <engine/client/updater.h>
+#if defined(CONF_ECLIENT_AUTOUPDATE)
+#include <engine/client/eclient_updater.h>
+#endif
 #include <engine/font_icons.h>
 #include <engine/graphics.h>
 #include <engine/keys.h>
@@ -166,6 +169,21 @@ void CMenusStart::RenderStartMenu(CUIRect MainView)
 	ConsoleButton.VSplitRight(40.0f, nullptr, &ConsoleButton);
 	Ui()->DoLabel(&CurVersion, GAME_RELEASE_VERSION, 14.0f, TEXTALIGN_MR);
 
+	CUIRect EClientVersion;
+	MainView.HSplitTop(15.0f, &EClientVersion, nullptr);
+	MainView.HSplitTop(25.0f, &EClientVersion, nullptr);
+	EClientVersion.VSplitRight(5.0f, &EClientVersion, nullptr);
+	EClientVersion.VSplitRight(100.0f, &EClientVersion, &EClientVersion);
+	static CButtonContainer s_EClientVer;
+	ColorRGBA Color = ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f);
+	if(g_Config.m_EcUnreadNews)
+		Color = ColorRGBA(0.2f, 0.7f, 0.5, 0.4f);
+	if(GameClient()->m_Menus.DoButton_Menu(&s_EClientVer, Localize(CLIENT_NAME " v" ECLIENT_VERSION), 0, &EClientVersion, BUTTONFLAG_ALL, nullptr, IGraphics::CORNER_ALL, 5, 0.5f, Color, 11.0f))
+	{
+		NewPage = CMenus::PAGE_ECLIENTNEWS;
+		g_Config.m_EcUnreadNews = false;
+	}
+
 	static CButtonContainer s_ConsoleButton;
 	TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
 	TextRender()->SetRenderFlags(ETextRenderFlags::TEXT_RENDER_FLAG_ONLY_ADVANCE_WIDTH | ETextRenderFlags::TEXT_RENDER_FLAG_NO_X_BEARING | ETextRenderFlags::TEXT_RENDER_FLAG_NO_Y_BEARING | ETextRenderFlags::TEXT_RENDER_FLAG_NO_PIXEL_ALIGNMENT | ETextRenderFlags::TEXT_RENDER_FLAG_NO_OVERSIZE);
@@ -236,6 +254,40 @@ void CMenusStart::RenderStartMenu(CUIRect MainView)
 	}
 	Ui()->DoLabel(&VersionUpdate, aBuf, 14.0f, TEXTALIGN_ML);
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
+#elif defined(CONF_ECLIENT_AUTOUPDATE)
+	IEClientUpdater *pEClientUpdater = Kernel()->RequestInterface<IEClientUpdater>();
+	const IEClientUpdater::EState UpdateState = pEClientUpdater->State();
+	CUIRect UpdateButton;
+	VersionUpdate.VSplitRight(100.0f, &VersionUpdate, &UpdateButton);
+	VersionUpdate.VSplitRight(10.0f, &VersionUpdate, nullptr);
+	char aBuf[128] = "";
+	if(UpdateState == IEClientUpdater::EState::AVAILABLE)
+	{
+		str_format(aBuf, sizeof(aBuf), Localize("E-Client %s is out!"), pEClientUpdater->LatestVersion());
+		static CButtonContainer s_EClientUpdate;
+		if(GameClient()->m_Menus.DoButton_Menu(&s_EClientUpdate, Localize("Update now"), 0, &UpdateButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
+			pEClientUpdater->Download();
+	}
+	else if(UpdateState == IEClientUpdater::EState::DOWNLOADING)
+	{
+		str_copy(aBuf, Localize("Downloading E-Client update…"));
+		Ui()->RenderProgressBar(UpdateButton, pEClientUpdater->Progress() / 100.0f);
+	}
+	else if(UpdateState == IEClientUpdater::EState::READY)
+	{
+		str_copy(aBuf, Localize("E-Client update ready!"));
+		static CButtonContainer s_EClientRestart;
+		if(GameClient()->m_Menus.DoButton_Menu(&s_EClientRestart, Localize("Restart"), 0, &UpdateButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
+			Client()->Restart();
+	}
+	else if(UpdateState == IEClientUpdater::EState::FAILED)
+	{
+		str_copy(aBuf, Localize("Update failed. See log."));
+		static CButtonContainer s_EClientRetry;
+		if(GameClient()->m_Menus.DoButton_Menu(&s_EClientRetry, Localize("Retry"), 0, &UpdateButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.25f)))
+			pEClientUpdater->Check();
+	}
+	Ui()->DoLabel(&VersionUpdate, aBuf, 14.0f, TEXTALIGN_ML);
 #elif defined(CONF_INFORM_UPDATE)
 	if(str_comp(Client()->LatestVersion(), "0") != 0)
 	{
@@ -254,6 +306,25 @@ void CMenusStart::RenderStartMenu(CUIRect MainView)
 		SLabelProperties UpdateLabelProps;
 		UpdateLabelProps.SetColor(ColorRGBA(1.0f, 0.4f, 0.4f, 1.0f));
 		Ui()->DoLabel(&VersionUpdate, aBuf, 14.0f, TEXTALIGN_ML, UpdateLabelProps);
+	}
+#endif
+#if !defined(CONF_ECLIENT_AUTOUPDATE)
+	if(g_Config.m_ClInformUpdate && str_comp(GameClient()->m_EntityInfo.m_aVersionStr, "0") != 0)
+	{
+		char aBuf[64];
+		str_format(aBuf, sizeof(aBuf), Localize(CLIENT_NAME " v%s is out!"), GameClient()->m_EntityInfo.m_aVersionStr);
+		TextRender()->TextColor(TextRender()->DefaultTextColor());
+		Ui()->DoLabel(&VersionUpdate, aBuf, 14.0f, TEXTALIGN_MC);
+		CUIRect VersionButton;
+		VersionUpdate.VSplitRight(100.0f, &VersionUpdate, &VersionButton);
+		VersionUpdate.VSplitRight(10.0f, &VersionUpdate, nullptr);
+		VersionButton.VSplitRight(5.0f, &VersionButton, nullptr);
+		VersionButton.VSplitRight(100.0f, &VersionButton, &VersionButton);
+		static CButtonContainer s_EClientDownload;
+		if(GameClient()->m_Menus.DoButton_Menu(&s_EClientDownload, Localize("Download"), 0, &VersionButton, BUTTONFLAG_ALL, nullptr, IGraphics::CORNER_ALL, 5, 0.5f, ColorRGBA(0.1f, 0.4f, 0.3f, 0.25f), 11.0f))
+		{
+			Client()->ViewLink(Localize("https://github.com/qxdFox/Entity-Client-DDNet/releases/latest"));
+		}
 	}
 #endif
 

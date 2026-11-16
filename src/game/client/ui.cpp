@@ -177,14 +177,32 @@ void CUi::OnCursorMove(float X, float Y)
 {
 	if(!CheckMouseLock())
 	{
-		m_UpdatedMousePos.x = std::clamp(m_UpdatedMousePos.x + X, 0.0f, Graphics()->WindowWidth() - 1.0f);
-		m_UpdatedMousePos.y = std::clamp(m_UpdatedMousePos.y + Y, 0.0f, Graphics()->WindowHeight() - 1.0f);
+		if(g_Config.m_ClUiMouseBorderTeleport)
+		{
+			m_UpdatedMousePos.x = m_UpdatedMousePos.x + X;
+			m_UpdatedMousePos.y = m_UpdatedMousePos.y + Y;
+
+			if(m_UpdatedMousePos.x < -45.0f)
+				m_UpdatedMousePos.x = Graphics()->WindowWidth() + 5.0f;
+			if(m_UpdatedMousePos.x > Graphics()->WindowWidth() + 5.0f)
+				m_UpdatedMousePos.x = -45.0f;
+
+			if(m_UpdatedMousePos.y < -45.0f)
+				m_UpdatedMousePos.y = Graphics()->WindowHeight() + 5.0f;
+			if(m_UpdatedMousePos.y > Graphics()->WindowHeight() + 5.0f)
+				m_UpdatedMousePos.y = -45.0f;
+		}
+		else
+		{
+			m_UpdatedMousePos.x = std::clamp(m_UpdatedMousePos.x + X, 0.0f, Graphics()->WindowWidth() - 1.0f);
+			m_UpdatedMousePos.y = std::clamp(m_UpdatedMousePos.y + Y, 0.0f, Graphics()->WindowHeight() - 1.0f);
+		}
 	}
 
 	m_UpdatedMouseDelta += vec2(X, Y);
 }
 
-void CUi::Update()
+void CUi::Update(bool IsChat)
 {
 	const vec2 WindowSize = vec2(Graphics()->WindowWidth(), Graphics()->WindowHeight());
 	const CUIRect *pScreen = Screen();
@@ -253,7 +271,7 @@ void CUi::Update()
 	if(Enabled())
 	{
 		CLineInput *pActiveInput = CLineInput::GetActiveInput();
-		if(pActiveInput && m_pLastActiveItem && pActiveInput != m_pLastActiveItem)
+		if(!IsChat && pActiveInput && m_pLastActiveItem && pActiveInput != m_pLastActiveItem)
 			pActiveInput->Deactivate();
 	}
 	else
@@ -266,6 +284,32 @@ void CUi::Update()
 	m_ProgressSpinnerOffset += Client()->RenderFrameTime() * 1.5f;
 	m_ProgressSpinnerOffset = std::fmod(m_ProgressSpinnerOffset, 1.0f);
 }
+
+// <EClient
+void CUi::ResumeMouseButtons()
+{
+	// A click is an edge between two updates, so it only means anything if the previous update was
+	// the previous frame. Nothing updates the ui while the player is just playing, which leaves the
+	// button state behind from whenever something last did, minutes ago at times. The first update
+	// a component makes on opening would compare against that and read a button held since before
+	// it opened as a click inside it.
+	//
+	// Adopting whatever is held right now as already held closes that gap: a button that was
+	// already down produces no edge, and one pressed afterwards still does. Called by whoever is
+	// about to start updating, since only they know when their lull ends.
+	unsigned Pressed = 0;
+	if(Enabled())
+	{
+		for(int MouseKey = KEY_MOUSE_1; MouseKey <= KEY_MOUSE_3; ++MouseKey)
+		{
+			if(Input()->KeyIsPressed(MouseKey))
+				Pressed |= 1 << (MouseKey - KEY_MOUSE_1);
+		}
+	}
+	m_MouseButtons = Pressed;
+	m_LastMouseButtons = Pressed;
+}
+// EClient>
 
 void CUi::DebugRender(float X, float Y)
 {
@@ -296,11 +340,24 @@ void CUi::ConvertMouseMove(float *pX, float *pY, IInput::ECursorType CursorType)
 		dbg_assert_failed("CUi::ConvertMouseMove CursorType %d", (int)CursorType);
 	}
 
-	if(m_MouseSlow)
-		Factor *= 0.05f;
+	if(CursorType == IInput::CURSOR_MOUSE && g_Config.m_ClDecoupleMouseSens)
+	{
+		vec2 Sens = vec2(g_Config.m_ClMouseSensXUi, g_Config.m_ClMouseSensYUi) / 100.0f;
 
-	*pX *= Factor;
-	*pY *= Factor;
+		if(m_MouseSlow)
+			Factor = 0.05f;
+
+		*pX *= Sens.x * Factor;
+		*pY *= Sens.y * Factor;
+	}
+	else
+	{
+		if(m_MouseSlow)
+			Factor *= 0.05f;
+
+		*pX *= Factor;
+		*pY *= Factor;
+	}
 }
 
 void CUi::UpdateTouchState(CTouchState &State) const
@@ -825,14 +882,10 @@ CLabelResult CUi::DoLabel(const CUIRect *pRect, const char *pText, float Size, i
 	TextRender()->TextEx(&Cursor, pText, -1);
 	if(Cursor.m_Truncated && LabelProps.m_pTooltipId)
 	{
-		DoToolTip({LabelProps.m_pTooltipId,
-			*pRect,
-			pText,
-			-1,
-			Size,
-			true});
+		DoToolTip({LabelProps.m_pTooltipId, *pRect, pText, -1, Size, true});
 	}
-	return CLabelResult{.m_Truncated = Cursor.m_Truncated};
+
+	return CLabelResult{Cursor.m_Truncated, CursorPos, Size, Cursor.m_LongestLineWidth};
 }
 
 void CUi::DoLabel(CUIElement::SUIElementRect &RectEl, const CUIRect *pRect, const char *pText, float Size, int Align, const SLabelProperties &LabelProps, int StrLen, const CTextCursor *pReadCursor) const
@@ -1441,7 +1494,7 @@ float CUi::DoScrollbarV(const void *pId, const CUIRect *pRect, float Current)
 	return ReturnValue;
 }
 
-float CUi::DoScrollbarH(const void *pId, const CUIRect *pRect, float Current, const ColorRGBA *pColorInner)
+float CUi::DoScrollbarH(const void *pId, const CUIRect *pRect, float Current, const ColorRGBA *pColorInner, bool Render)
 {
 	Current = std::clamp(Current, 0.0f, 1.0f);
 
@@ -1534,23 +1587,53 @@ float CUi::DoScrollbarH(const void *pId, const CUIRect *pRect, float Current, co
 	}
 
 	// render
-	const ColorRGBA HandleColor = ms_ScrollBarColorFunction.GetColor(CheckActiveItem(pId), HotItem() == pId);
-	if(pColorInner)
+	if(Render)
 	{
-		CUIRect Slider;
-		Handle.VMargin(-2.0f, &Slider);
-		Slider.HMargin(-3.0f, &Slider);
-		Slider.Draw(ColorRGBA(0.15f, 0.15f, 0.15f, 1.0f).Multiply(HandleColor), IGraphics::CORNER_ALL, 5.0f);
-		Slider.Margin(2.0f, &Slider);
-		Slider.Draw(pColorInner->Multiply(HandleColor), IGraphics::CORNER_ALL, 3.0f);
-	}
-	else
-	{
-		Rail.Draw(ColorRGBA(1.0f, 1.0f, 1.0f, 0.25f), IGraphics::CORNER_ALL, Rail.h / 2.0f);
-		Handle.Draw(HandleColor, IGraphics::CORNER_ALL, Rail.h / 2.0f);
+		const ColorRGBA HandleColor = ms_ScrollBarColorFunction.GetColor(CheckActiveItem(pId), HotItem() == pId);
+		if(pColorInner)
+		{
+			CUIRect Slider;
+			Handle.VMargin(-2.0f, &Slider);
+			Slider.HMargin(-3.0f, &Slider);
+			Slider.Draw(ColorRGBA(0.15f, 0.15f, 0.15f, 1.0f).Multiply(HandleColor), IGraphics::CORNER_ALL, 5.0f);
+			Slider.Margin(2.0f, &Slider);
+			Slider.Draw(pColorInner->Multiply(HandleColor), IGraphics::CORNER_ALL, 3.0f);
+		}
+		else
+		{
+			Rail.Draw(ColorRGBA(1.0f, 1.0f, 1.0f, 0.25f), IGraphics::CORNER_ALL, Rail.h / 2.0f);
+			Handle.Draw(HandleColor, IGraphics::CORNER_ALL, Rail.h / 2.0f);
+		}
 	}
 
 	return ReturnValue;
+}
+
+// Allow adjustment of slider options when ctrl is pressed (to avoid scrolling, or accidentally adjusting the value)
+int CUi::ScrollbarKeyboardAdjust(const CUIRect *pRect, int Value, int Min, int Max)
+{
+	const int Increment = std::max(1, (Max - Min) / 35);
+	if(Input()->ModifierIsPressed() && Input()->KeyPress(KEY_MOUSE_WHEEL_UP) && MouseInside(pRect))
+	{
+		Value += Increment;
+		Value = std::clamp(Value, Min, Max);
+	}
+	if(Input()->ModifierIsPressed() && Input()->KeyPress(KEY_MOUSE_WHEEL_DOWN) && MouseInside(pRect))
+	{
+		Value -= Increment;
+		Value = std::clamp(Value, Min, Max);
+	}
+	if(Input()->KeyPress(KEY_A) && MouseInside(pRect))
+	{
+		Value -= Input()->ModifierIsPressed() ? 5 : 1;
+		Value = std::clamp(Value, Min, Max);
+	}
+	if(Input()->KeyPress(KEY_D) && MouseInside(pRect))
+	{
+		Value += Input()->ModifierIsPressed() ? 5 : 1;
+		Value = std::clamp(Value, Min, Max);
+	}
+	return Value;
 }
 
 bool CUi::DoScrollbarOption(const void *pId, int *pOption, const CUIRect *pRect, const char *pStr, int Min, int Max, const IScrollbarScale *pScale, unsigned Flags, const char *pSuffix)
@@ -1568,6 +1651,8 @@ bool CUi::DoScrollbarOption(const void *pId, int *pOption, const CUIRect *pRect,
 		if(Value == 0)
 			Value = Max;
 	}
+
+	Value = ScrollbarKeyboardAdjust(pRect, Value, Min, Max);
 
 	char aBuf[256];
 	if(!Infinite || Value != Max)
@@ -1605,6 +1690,180 @@ bool CUi::DoScrollbarOption(const void *pId, int *pOption, const CUIRect *pRect,
 	{
 		m_ScrollbarValue = Value;
 		return false;
+	}
+
+	if(*pOption != Value)
+	{
+		*pOption = Value;
+		return true;
+	}
+	return false;
+}
+
+bool CUi::DoScrollbarOptionRender(const void *pId, int *pOption, const CUIRect *pRect, const char *pStr, int Min, int Max, const IScrollbarScale *pScale, unsigned Flags)
+{
+	const bool Infinite = Flags & CUi::SCROLLBAR_OPTION_INFINITE;
+	const bool NoClampValue = Flags & CUi::SCROLLBAR_OPTION_NOCLAMPVALUE;
+	const bool MultiLine = Flags & CUi::SCROLLBAR_OPTION_MULTILINE;
+
+	int Value = *pOption;
+	if(Infinite)
+	{
+		Max += 1;
+		if(Value == 0)
+			Value = Max;
+	}
+
+	// Allow adjustment of slider options when ctrl is pressed (to avoid scrolling, or accidentally adjusting the value)
+	int Increment = std::max(1, (Max - Min) / 35);
+	if(Input()->ModifierIsPressed() && Input()->KeyPress(KEY_MOUSE_WHEEL_UP) && MouseInside(pRect))
+	{
+		Value += Increment;
+		Value = std::clamp(Value, Min, Max);
+	}
+	if(Input()->ModifierIsPressed() && Input()->KeyPress(KEY_MOUSE_WHEEL_DOWN) && MouseInside(pRect))
+	{
+		Value -= Increment;
+		Value = std::clamp(Value, Min, Max);
+	}
+	if(Input()->KeyPress(KEY_A) && MouseInside(pRect))
+	{
+		Value -= Input()->ModifierIsPressed() ? 5 : 1;
+		Value = std::clamp(Value, Min, Max);
+	}
+	if(Input()->KeyPress(KEY_D) && MouseInside(pRect))
+	{
+		Value += Input()->ModifierIsPressed() ? 5 : 1;
+		Value = std::clamp(Value, Min, Max);
+	}
+
+	if(NoClampValue)
+	{
+		// clamp the value internally for the scrollbar
+		Value = std::clamp(Value, Min, Max);
+	}
+
+	CUIRect Label, ScrollBar;
+	if(MultiLine)
+		pRect->HSplitMid(&Label, &ScrollBar);
+	else
+		pRect->VSplitMid(&Label, &ScrollBar, std::min(10.0f, pRect->w * 0.05f));
+
+	Value = pScale->ToAbsolute(DoScrollbarH(pId, &ScrollBar, pScale->ToRelative(Value, Min, Max), nullptr, false), Min, Max);
+	if(NoClampValue && ((Value == Min && *pOption < Min) || (Value == Max && *pOption > Max)))
+	{
+		Value = *pOption; // use previous out of range value instead if the scrollbar is at the edge
+	}
+	else if(Infinite)
+	{
+		if(Value == Max)
+			Value = 0;
+	}
+
+	if(*pOption != Value)
+	{
+		*pOption = Value;
+		return true;
+	}
+	return false;
+}
+
+bool CUi::DoSliderWithScaledValue(const void *pId, int *pOption, const CUIRect *pRect, const char *pStr, int Min, int Max, int Scale, const IScrollbarScale *pScale, unsigned Flags, const char *pSuffix)
+{
+	const bool NoClampValue = Flags & CUi::SCROLLBAR_OPTION_NOCLAMPVALUE;
+	const bool DelayUpdate = Flags & CUi::SCROLLBAR_OPTION_DELAYUPDATE;
+
+	int Value = (DelayUpdate && m_pLastActiveScrollbar == pId && CheckActiveItem(pId)) ? m_ScrollbarValue : *pOption;
+	Min /= Scale;
+	Max /= Scale;
+	// Allow adjustment of slider options when ctrl is pressed (to avoid scrolling, or accidentally adjusting the value)
+	int Increment = std::max(1, (Max - Min) / 35);
+	if(Input()->ModifierIsPressed() && Input()->KeyPress(KEY_MOUSE_WHEEL_UP) && MouseInside(pRect))
+	{
+		Value += Increment;
+		Value = std::clamp(Value, Min, Max);
+	}
+	if(Input()->ModifierIsPressed() && Input()->KeyPress(KEY_MOUSE_WHEEL_DOWN) && MouseInside(pRect))
+	{
+		Value -= Increment;
+		Value = std::clamp(Value, Min, Max);
+	}
+
+	char aBuf[256];
+	str_format(aBuf, sizeof(aBuf), "%s: %i%s", pStr, Value * Scale, pSuffix);
+
+	if(NoClampValue)
+	{
+		// clamp the value internally for the scrollbar
+		Value = std::clamp(Value, Min, Max);
+	}
+
+	CUIRect Label, ScrollBar;
+	pRect->VSplitMid(&Label, &ScrollBar, std::min(10.0f, pRect->w * 0.05f));
+
+	const float LabelFontSize = Label.h * CUi::ms_FontmodHeight * 0.8f;
+	DoLabel(&Label, aBuf, LabelFontSize, TEXTALIGN_ML);
+
+	Value = pScale->ToAbsolute(DoScrollbarH(pId, &ScrollBar, pScale->ToRelative(Value, Min, Max)), Min, Max);
+	if(NoClampValue && ((Value == Min && *pOption < Min) || (Value == Max && *pOption > Max)))
+	{
+		Value = *pOption;
+	}
+
+	if(DelayUpdate && m_pLastActiveScrollbar == pId && CheckActiveItem(pId))
+	{
+		m_ScrollbarValue = Value;
+		return false;
+	}
+
+	if(*pOption != Value)
+	{
+		*pOption = Value;
+		return true;
+	}
+	return false;
+}
+
+bool CUi::DoFloatScrollBar(const void *pId, int *pOption, const CUIRect *pRect, const char *pStr, int Min, int Max, int DivideBy, const IScrollbarScale *pScale, unsigned Flags, const char *pSuffix)
+{
+	const bool Infinite = Flags & CUi::SCROLLBAR_OPTION_INFINITE;
+	const bool NoClampValue = Flags & CUi::SCROLLBAR_OPTION_NOCLAMPVALUE;
+	const bool MultiLine = Flags & CUi::SCROLLBAR_OPTION_MULTILINE;
+	const bool DelayUpdate = Flags & CUi::SCROLLBAR_OPTION_DELAYUPDATE;
+
+	int Value = (DelayUpdate && m_pLastActiveScrollbar == pId && CheckActiveItem(pId)) ? m_ScrollbarValue : *pOption;
+	if(Infinite)
+	{
+		Max += 1;
+		if(Value == 0)
+			Value = Max;
+	}
+
+	Value = ScrollbarKeyboardAdjust(pRect, Value, Min, Max);
+
+	char aBuf[256];
+	str_format(aBuf, sizeof(aBuf), "%s: %.1f%s", pStr, (float)Value / DivideBy, pSuffix);
+
+	Value = std::clamp(Value, Min, Max);
+
+	CUIRect Label, ScrollBar;
+	if(MultiLine)
+		pRect->HSplitMid(&Label, &ScrollBar);
+	else
+		pRect->VSplitMid(&Label, &ScrollBar, std::min(10.0f, pRect->w * 0.05f));
+
+	const float aFontSize = Label.h * CUi::ms_FontmodHeight * 0.8f;
+	DoLabel(&Label, aBuf, aFontSize, TEXTALIGN_ML);
+
+	Value = pScale->ToAbsolute(DoScrollbarH(pId, &ScrollBar, pScale->ToRelative(Value, Min, Max)), Min, Max);
+	if(NoClampValue && ((Value == Min && *pOption < Min) || (Value == Max && *pOption > Max)))
+	{
+		Value = *pOption; // use previous out of range value instead if the scrollbar is at the edge
+	}
+	else if(Infinite)
+	{
+		if(Value == Max)
+			Value = 0;
 	}
 
 	if(*pOption != Value)
@@ -1876,4 +2135,9 @@ void CUi::DoToolTip(const void *pId, const CUIRect *pNearRect, const char *pText
 void CUi::DoToolTip(const CTooltip &Tooltip) const
 {
 	m_pTooltips->DoToolTip(Tooltip);
+}
+
+void CUi::DoToolTipFade(const void *pId, const CUIRect *pNearRect, const char *pText, float FadeTime) const
+{
+	DoToolTip({pId, *pNearRect, pText, -1.0f, TOOLTIP_FONTSIZE, false, FadeTime});
 }

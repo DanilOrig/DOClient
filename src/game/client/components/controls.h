@@ -37,12 +37,14 @@ public:
 	int64_t m_LastSendTime;
 	CNetObj_PlayerInput m_aInputData[NUM_DUMMIES];
 	CNetObj_PlayerInput m_aLastData[NUM_DUMMIES];
-	CNetObj_PlayerInput m_aFastInput[NUM_DUMMIES];
-	bool m_FastInputHookAction = false;
-	bool m_FastInputFireAction = false;
 	int m_aInputDirectionLeft[NUM_DUMMIES];
 	int m_aInputDirectionRight[NUM_DUMMIES];
 	int m_aShowHookColl[NUM_DUMMIES];
+
+	// TClient
+	CNetObj_PlayerInput m_aFastInput[NUM_DUMMIES];
+	bool m_FastInputHookAction = false;
+	bool m_FastInputFireAction = false;
 
 	CControls();
 	int Sizeof() const override { return sizeof(*this); }
@@ -55,18 +57,20 @@ public:
 	virtual void OnPlayerDeath();
 
 	int SnapInput(int *pData);
-	bool CheckNewInput();
 	void ClampMousePos();
 	void ResetInput(int Dummy);
+	bool CheckNewInput();
+	vec2 CursorWorldPos() const;
 
 private:
+	void ApplyGoresMode(CNetObj_PlayerInput &Input) const;
+	vec2 DyncamZoomCursorTarget(vec2 MousePos) const;
 	static void ConKeyInputState(IConsole::IResult *pResult, void *pUserData);
 	static void ConKeyInputCounter(IConsole::IResult *pResult, void *pUserData);
 	static void ConKeyInputSet(IConsole::IResult *pResult, void *pUserData);
 	static void ConKeyInputNextPrevWeapon(IConsole::IResult *pResult, void *pUserData);
 	static void ConTpToCursor(IConsole::IResult *pResult, void *pUserData);
 	static void ConTpDummyToCursor(IConsole::IResult *pResult, void *pUserData);
-	vec2 CursorWorldPos() const;
 	void SendPracticeTeleportToCursor(int Conn);
 };
 #endif

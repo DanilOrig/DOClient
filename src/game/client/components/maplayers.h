@@ -14,15 +14,17 @@ class ColorRGBA;
 
 class CMapLayers : public CComponent
 {
+	friend class CScriptRunner; // TClient
+
 	friend class CBackground;
 	friend class CMenuBackground;
 
 	CLayers *m_pLayers;
 	CMapImages *m_pImages;
 	ERenderType m_Type;
-	bool m_OnlineOnly;
 
 public:
+	bool m_OnlineOnly;
 	CMapLayers(ERenderType Type, bool OnlineOnly = true);
 	int Sizeof() const override { return sizeof(*this); }
 	void OnInit() override;

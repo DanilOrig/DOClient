@@ -84,8 +84,8 @@ class CScoreboard : public CComponent
 
 		CCachedText m_Score;
 		CCachedText m_ScoreMillis;
+		CCachedText m_ClientId;
 		CCachedText m_Name;
-		CCachedText m_Tag;
 		CCachedText m_ReadyMark;
 		CCachedText m_Clan;
 		CCachedText m_Ping;
@@ -115,6 +115,9 @@ public:
 	bool OnInput(const IInput::CEvent &Event) override;
 
 	bool IsActive() const;
+
+	// EClient
+	friend class CHud;
 };
 
 #endif

@@ -250,8 +250,10 @@ bool str_valid_filename(const char *str)
 		"LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT¹", "LPT²", "LPT³"};
 	return std::none_of(std::begin(RESERVED_NAMES), std::end(RESERVED_NAMES), [str](const char *reserved_name) {
 		const char *prefix = str_startswith_nocase(str, reserved_name);
-		// reserved name not allowed when it makes up the entire filename or when followed by period
-		return prefix != nullptr && (prefix[0] == '\0' || prefix[0] == '.');
+		// reserved name not allowed when it makes up the entire filename, when followed by period,
+		// or when followed by space and period
+		return prefix != nullptr &&
+		       (prefix[0] == '\0' || prefix[0] == '.' || (prefix[0] == ' ' && prefix[1] == '.'));
 	});
 }
 
@@ -1390,4 +1392,35 @@ int str_utf32_dist_buffer(const int *a, int a_len, const int *b, int b_len, int 
 	}
 	return B(a_len, b_len);
 #undef B
+}
+
+void str_format_prefix(char *dst, const char *pPrefix, int dst_size)
+{
+	str_copy(dst, pPrefix, dst_size);
+	str_clean_whitespaces(dst);
+	if(dst[0] != '\0')
+		str_append(dst, " ", dst_size);
+}
+
+void str_format_plural(char *dst, const char *pStr, int dst_size)
+{
+	str_copy(dst, pStr, dst_size);
+
+	if(str_endswith(dst, "s"))
+	{
+		str_append(dst, "'", dst_size);
+	}
+	else if(str_endswith(dst, "y"))
+	{
+		const int Len = str_length(dst);
+		if(Len >= 1)
+		{
+			dst[Len - 1] = '\0';
+			str_append(dst, "ies", dst_size);
+		}
+	}
+	else
+	{
+		str_append(dst, "s", dst_size);
+	}
 }

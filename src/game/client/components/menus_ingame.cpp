@@ -44,10 +44,11 @@ using namespace std::chrono_literals;
 
 void CMenus::RenderGame(CUIRect MainView)
 {
-	CUIRect Button, ButtonBars, ButtonBar, ButtonBar2;
+	CUIRect Button, ButtonBars, ButtonBar, ButtonBar2, ButtonPanel;
 	bool ShowDDRaceButtons = MainView.w > 855.0f;
-	MainView.HSplitTop(45.0f + (g_Config.m_ClTouchControls ? 35.0f : 0.0f), &ButtonBars, &MainView);
-	ButtonBars.Draw(ms_ColorTabbarActive, IGraphics::CORNER_B, 10.0f);
+	MainView.HSplitTop(45.0f + (g_Config.m_ClTouchControls ? 35.0f : 0.0f), &ButtonPanel, &MainView);
+	ButtonPanel.Draw(ms_ColorTabbarActive, IGraphics::CORNER_B, 10.0f);
+	ButtonBars = ButtonPanel;
 	ButtonBars.Margin(10.0f, &ButtonBars);
 	ButtonBars.HSplitTop(25.0f, &ButtonBar, &ButtonBars);
 	if(g_Config.m_ClTouchControls)
@@ -230,6 +231,46 @@ void CMenus::RenderGame(CUIRect MainView)
 				Console()->ExecuteLine("say /pause", IConsole::CLIENT_ID_UNSPECIFIED);
 				SetActive(false);
 			}
+		}
+	}
+
+	// EClient
+	if(GameClient()->m_LocalPractice.IsAvailableHere() || GameClient()->m_LocalPractice.IsActive())
+	{
+		constexpr float LocalPracticeWidth = 150.0f;
+		constexpr float PanelCorner = 10.0f;
+		CUIRect LocalButton;
+		if(ButtonBar.w - 37.0f >= LocalPracticeWidth + 5.0f)
+		{
+			ButtonBar.VSplitLeft(LocalPracticeWidth, &LocalButton, &ButtonBar);
+			ButtonBar.VSplitLeft(5.0f, nullptr, &ButtonBar);
+		}
+		else
+		{
+			constexpr float ButtonHeight = 25.0f;
+			constexpr float ButtonGap = 5.0f;
+
+			CUIRect Tab;
+			Tab.x = ButtonPanel.x;
+			Tab.w = LocalPracticeWidth + 2.0f * PanelCorner;
+			Tab.y = ButtonPanel.y + ButtonPanel.h - PanelCorner;
+			Tab.h = ButtonGap + ButtonHeight + PanelCorner;
+			Tab.Draw(ms_ColorTabbarActive, IGraphics::CORNER_B, PanelCorner);
+
+			MainView.HSplitTop(Tab.y + Tab.h - MainView.y, nullptr, &MainView);
+
+			LocalButton.x = Tab.x + PanelCorner;
+			LocalButton.w = LocalPracticeWidth;
+			LocalButton.y = Tab.y + ButtonGap;
+			LocalButton.h = ButtonHeight;
+		}
+
+		static CButtonContainer s_LocalPracticeButton;
+		const bool PracticeActive = GameClient()->m_LocalPractice.IsActive();
+		if(DoButton_Menu(&s_LocalPracticeButton, PracticeActive ? Localize("Leave practice") : Localize("Local practice"), 0, &LocalButton))
+		{
+			GameClient()->m_LocalPractice.Toggle();
+			SetActive(false);
 		}
 	}
 
@@ -1183,7 +1224,8 @@ void CMenus::RenderInGameNetwork(CUIRect MainView)
 	}
 	Ui()->DoToolTip(&s_FavoritesButton, &Button, Localize("Favorites"));
 
-	const int MaxPage = PAGE_FAVORITES + ServerBrowser()->FavoriteCommunities().size();
+	const std::vector<const CCommunity *> vpFavoriteCommunities = ServerBrowser()->FavoriteCommunities();
+	const int MaxPage = PAGE_FAVORITES + vpFavoriteCommunities.size();
 	if(
 		!Ui()->IsPopupOpen() &&
 		CLineInput::GetActiveInput() == nullptr &&
@@ -1207,7 +1249,7 @@ void CMenus::RenderInGameNetwork(CUIRect MainView)
 	size_t FavoriteCommunityIndex = 0;
 	static CButtonContainer s_aFavoriteCommunityButtons[5];
 	static_assert(std::size(s_aFavoriteCommunityButtons) == (size_t)PAGE_FAVORITE_COMMUNITY_5 - PAGE_FAVORITE_COMMUNITY_1 + 1);
-	for(const CCommunity *pCommunity : ServerBrowser()->FavoriteCommunities())
+	for(const CCommunity *pCommunity : vpFavoriteCommunities)
 	{
 		TabBar.VSplitLeft(75.0f, &Button, &TabBar);
 		const int Page = PAGE_FAVORITE_COMMUNITY_1 + FavoriteCommunityIndex;
@@ -1258,7 +1300,7 @@ int CMenus::GhostlistFetchCallback(const CFsFileInfo *pInfo, int IsDir, int Stor
 
 	if(time_get_nanoseconds() - pSelf->m_GhostPopulateStartTime > 500ms)
 	{
-		pSelf->RenderLoading(Localize("Loading ghost files"), "", 0);
+		pSelf->RenderLoading(Localize("Loading E-Client"), "Loading ghost files", 0);
 	}
 
 	return 0;

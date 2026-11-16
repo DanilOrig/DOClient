@@ -17,6 +17,7 @@
 
 typedef struct _json_value json_value;
 class CNetClient;
+class IGameClient;
 class IConfigManager;
 class IConsole;
 class IEngine;
@@ -225,12 +226,15 @@ class CCommunityCache : public ICommunityCache
 	std::optional<SHA256_DIGEST> m_InfoSha256;
 	int m_LastType = IServerBrowser::NUM_TYPES; // initial value does not appear normally, marking uninitialized cache
 	unsigned m_SelectedCommunitiesHash = 0;
+	std::vector<CCommunity> m_vSelectedCommunities;
 	std::vector<const CCommunity *> m_vpSelectedCommunities;
+	std::vector<CCommunityCountry> m_vSelectableCountries;
 	std::vector<const CCommunityCountry *> m_vpSelectableCountries;
+	std::vector<CCommunityType> m_vSelectableTypes;
 	std::vector<const CCommunityType *> m_vpSelectableTypes;
 	bool m_AnyRanksAvailable = false;
 	bool m_CountryTypesFilterAvailable = false;
-	const char *m_pCountryTypeFilterKey = IServerBrowser::COMMUNITY_ALL;
+	CCommunityId m_CountryTypeFilterKey = IServerBrowser::COMMUNITY_ALL;
 
 public:
 	CCommunityCache(IServerBrowser *pServerBrowser) :
@@ -244,7 +248,7 @@ public:
 	const std::vector<const CCommunityType *> &SelectableTypes() const override { return m_vpSelectableTypes; }
 	bool AnyRanksAvailable() const override { return m_AnyRanksAvailable; }
 	bool CountriesTypesFilterAvailable() const override { return m_CountryTypesFilterAvailable; }
-	const char *CountryTypeFilterKey() const override { return m_pCountryTypeFilterKey; }
+	const char *CountryTypeFilterKey() const override { return m_CountryTypeFilterKey.Id(); }
 };
 
 class CServerBrowser : public IServerBrowser
@@ -274,8 +278,6 @@ public:
 	void LoadDDNetInfoJson();
 	void LoadDDNetLocation();
 	void LoadDDNetServers();
-	void LoadCommunities(const json_value &Communities, const json_value *pInfo);
-	void LoadCustomCommunities();
 	void UpdateServerFilteredPlayers(CServerInfo *pInfo) const;
 	void UpdateServerFriends(CServerInfo *pInfo) const;
 	void UpdateServerCommunity(CServerInfo *pInfo) const;
@@ -293,7 +295,6 @@ public:
 	unsigned CurrentCommunitiesHash() const override;
 
 	bool DDNetInfoAvailable() const override { return m_pDDNetInfo != nullptr; }
-	void ReloadCommunities() override;
 	std::optional<SHA256_DIGEST> DDNetInfoSha256() const override { return m_DDNetInfoSha256; }
 
 	ICommunityCache &CommunityCache() override { return m_CommunityCache; }
@@ -329,6 +330,7 @@ private:
 	IConfigManager *m_pConfigManager = nullptr;
 	IConsole *m_pConsole = nullptr;
 	IEngine *m_pEngine = nullptr;
+	IGameClient *m_pGameClient = nullptr;
 	IFriends *m_pFriends = nullptr;
 	IFavorites *m_pFavorites = nullptr;
 	IStorage *m_pStorage = nullptr;
@@ -398,8 +400,10 @@ private:
 	void Sort();
 	int SortHash() const;
 
+public:
 	void CleanUp();
 
+private:
 	void UpdateFromHttp();
 	CServerEntry *Add(const NETADDR *pAddrs, int NumAddrs);
 	CServerEntry *ReplaceEntry(CServerEntry *pEntry, const NETADDR *pAddrs, int NumAddrs);
@@ -429,6 +433,11 @@ private:
 
 	static bool ParseCommunityFinishes(CCommunity *pCommunity, const json_value &Finishes);
 	static bool ParseCommunityServers(CCommunity *pCommunity, const json_value &Servers);
+
+	// TClient
+	bool m_LoadedCustomCommunities = false;
+	std::function<void(std::vector<json_value *> &)> m_CustomCommunitiesFunction = nullptr;
+	friend class CCustomCommunities;
 };
 
 #endif

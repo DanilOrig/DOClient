@@ -11,6 +11,7 @@
 #include "entities/plasma.h"
 #include "entities/projectile.h"
 #include "entity.h"
+#include "quad_zones.h"
 
 #include <engine/shared/config.h>
 
@@ -29,9 +30,17 @@
 //////////////////////////////////////////////////
 CGameWorld::CGameWorld()
 {
-	std::fill(std::begin(m_apFirstEntityTypes), std::end(m_apFirstEntityTypes), nullptr);
-	std::fill(std::begin(m_apCharacters), std::end(m_apCharacters), nullptr);
+	// EClient: never initialised before. It did not show, because every flag was also gated by a
+	// global somewhere; m_PredictEvents no longer is, so an indeterminate one would decide whether
+	// a brand new world creates events.
+	mem_zero(&m_WorldConfig, sizeof(m_WorldConfig));
+
+	for(auto &pFirstEntityType : m_apFirstEntityTypes)
+		pFirstEntityType = nullptr;
+	for(auto &pCharacter : m_apCharacters)
+		pCharacter = nullptr;
 	m_pCollision = nullptr;
+	m_pQuadZones = nullptr;
 	m_GameTick = 0;
 	m_pParent = nullptr;
 	m_pChild = nullptr;
@@ -49,9 +58,10 @@ CGameWorld::~CGameWorld()
 		m_pParent->m_pChild = nullptr;
 }
 
-void CGameWorld::Init(CCollision *pCollision, CTuningParams *pTuningList, const CMapBugs *pMapBugs)
+void CGameWorld::Init(CCollision *pCollision, CTuningParams *pTuningList, const CMapBugs *pMapBugs, CQuadZones *pQuadZones)
 {
 	m_pCollision = pCollision;
+	m_pQuadZones = pQuadZones;
 	m_pTuningList = pTuningList;
 	m_pMapBugs = pMapBugs;
 }
@@ -199,6 +209,11 @@ void CGameWorld::RemoveEntities()
 
 void CGameWorld::Tick()
 {
+	// <FoxNet
+	if(m_pQuadZones)
+		m_pQuadZones->UpdateTo(GameTick());
+	// FoxNet>
+
 	// update all objects
 	for(int i = 0; i < NUM_ENTTYPES; i++)
 	{
@@ -232,6 +247,12 @@ void CGameWorld::Tick()
 			pEnt->m_SnapTicks++;
 			pEnt = m_pNextTraverseEntity;
 		}
+
+	// <FoxNet
+	// After the movement, never before it, see CCharacter::QuadZoneTick
+	for(CEntity *pEnt = FindFirst(ENTTYPE_CHARACTER); pEnt; pEnt = pEnt->TypeNext())
+		((CCharacter *)pEnt)->QuadZoneTick();
+	// FoxNet>
 
 	RemoveEntities();
 
@@ -664,6 +685,56 @@ void CGameWorld::NetObjEnd()
 	}
 }
 
+void CGameWorld::CopyWorldClean(CGameWorld *pFrom)
+{
+	if(pFrom == this || !pFrom)
+		return;
+	m_IsValidCopy = false;
+
+	m_GameTick = pFrom->m_GameTick;
+	m_pCollision = pFrom->m_pCollision;
+	m_pQuadZones = pFrom->m_pQuadZones;
+	m_WorldConfig = pFrom->m_WorldConfig;
+	m_pTuningList = pFrom->m_pTuningList;
+	m_pMapBugs = pFrom->m_pMapBugs;
+	m_Teams = pFrom->m_Teams;
+	m_Core.m_vSwitchers = pFrom->m_Core.m_vSwitchers;
+	m_PredictedEvents = pFrom->m_PredictedEvents;
+	// delete the previous entities
+	Clear();
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		m_apCharacters[i] = 0;
+		m_Core.m_apCharacters[i] = 0;
+	}
+	// copy and add the new entities
+	for(int Type = 0; Type < NUM_ENTTYPES; Type++)
+	{
+		for(CEntity *pEnt = pFrom->FindLast(Type); pEnt; pEnt = pEnt->TypePrev())
+		{
+			CEntity *pCopy = nullptr;
+			if(Type == ENTTYPE_PROJECTILE)
+				pCopy = new CProjectile(*((CProjectile *)pEnt));
+			else if(Type == ENTTYPE_LASER)
+				pCopy = new CLaser(*((CLaser *)pEnt));
+			else if(Type == ENTTYPE_DRAGGER)
+				pCopy = new CDragger(*((CDragger *)pEnt));
+			else if(Type == ENTTYPE_CHARACTER)
+				pCopy = new CCharacter(*((CCharacter *)pEnt));
+			else if(Type == ENTTYPE_PICKUP)
+				pCopy = new CPickup(*((CPickup *)pEnt));
+			else if(Type == ENTTYPE_PLASMA)
+				pCopy = new CPlasma(*((CPlasma *)pEnt));
+			if(pCopy)
+			{
+				pCopy->m_pParent = nullptr;
+				pCopy->m_pChild = nullptr;
+				this->InsertEntity(pCopy);
+			}
+		}
+	}
+}
+
 void CGameWorld::CopyWorld(CGameWorld *pFrom)
 {
 	if(pFrom == this || !pFrom)
@@ -676,6 +747,7 @@ void CGameWorld::CopyWorld(CGameWorld *pFrom)
 
 	m_GameTick = pFrom->m_GameTick;
 	m_pCollision = pFrom->m_pCollision;
+	m_pQuadZones = pFrom->m_pQuadZones;
 	m_WorldConfig = pFrom->m_WorldConfig;
 	m_pTuningList = pFrom->m_pTuningList;
 	m_pMapBugs = pFrom->m_pMapBugs;
@@ -817,7 +889,10 @@ bool CGameWorld::EmulateBug(int Bug) const
 
 void CGameWorld::CreatePredictedEvent(const CPredictedEvent &NewEvent)
 {
-	if(!g_Config.m_ClPredictEvents || !m_WorldConfig.m_PredictEvents)
+	// EClient: cl_predict_events used to be read straight from the global here, which meant a world
+	// that is only ever simulated locally could not have events even though there is nothing for
+	// them to mispredict against. It is folded into m_PredictEvents by UpdatePrediction instead.
+	if(!m_WorldConfig.m_PredictEvents)
 		return;
 
 	// prediction is ran multiple times per tick, check if event already exists

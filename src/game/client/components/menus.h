@@ -3,6 +3,8 @@
 #ifndef GAME_CLIENT_COMPONENTS_MENUS_H
 #define GAME_CLIENT_COMPONENTS_MENUS_H
 
+#include "entity/warlist.h"
+
 #include <base/bytes.h>
 #include <base/str.h>
 #include <base/types.h>
@@ -11,6 +13,7 @@
 #include <engine/console.h>
 #include <engine/demo.h>
 #include <engine/friends.h>
+#include <engine/map.h>
 #include <engine/serverbrowser.h>
 #include <engine/shared/config.h>
 #include <engine/textrender.h>
@@ -24,11 +27,76 @@
 #include <game/client/components/skins7.h>
 #include <game/client/lineinput.h>
 #include <game/client/ui.h>
+#include <game/localization.h>
 #include <game/voting.h>
 
 #include <chrono>
 #include <optional>
 #include <vector>
+
+// EClient
+enum class ESettingsModuleColumn
+{
+	LEFT,
+	RIGHT,
+	BOTH, // Never a place to put a module, only something to ask for once the columns are merged
+};
+
+// EClient: what a module is about, so the one settings page can be narrowed to a topic without
+// being split back into separate pages. A module carries one or more of these; the page holds a
+// mask of the chips the user has toggled on, and an empty mask shows everything.
+enum ESettingsModuleFilter : unsigned
+{
+	FILTER_NONE = 0, // No chip active: everything shows
+
+	FILTER_VISUAL = 1 << 0,
+	FILTER_HUD = 1 << 1,
+	FILTER_GAMEPLAY = 1 << 2,
+	FILTER_NETWORK = 1 << 3,
+	FILTER_CHAT = 1 << 4,
+	FILTER_WARLIST = 1 << 5,
+	FILTER_MISC = 1 << 6,
+	FILTER_NEW = 1 << 7,
+};
+
+class CSettingsModule
+{
+public:
+	ESettingsModuleColumn m_Column = ESettingsModuleColumn::LEFT;
+	float m_TopMargin = 0.0f;
+	unsigned m_Filters = FILTER_MISC; // Never FILTER_NONE, an untagged module would be unreachable while any chip is on
+	std::vector<std::string_view> m_vSearchTerms;
+	std::function<float(bool)> m_GetHeight;
+	std::function<void(CUIRect, bool)> m_Render;
+
+	CSettingsModule(ESettingsModuleColumn Column, float TopMargin, std::function<float(bool)> GetHeight, std::function<void(CUIRect, bool)> Render) :
+		m_Column(Column),
+		m_TopMargin(TopMargin),
+		m_GetHeight(std::move(GetHeight)),
+		m_Render(std::move(Render))
+	{
+	}
+
+	CSettingsModule(ESettingsModuleColumn Column, unsigned Filters, std::vector<std::string_view> vSearchTerms, std::function<float(bool)> GetHeight, std::function<void(CUIRect, bool)> Render, float TopMargin = 0.0f) :
+		m_Column(Column),
+		m_TopMargin(TopMargin),
+		m_Filters(Filters),
+		m_vSearchTerms(std::move(vSearchTerms)),
+		m_GetHeight(std::move(GetHeight)),
+		m_Render(std::move(Render))
+	{
+	}
+
+	CSettingsModule(ESettingsModuleColumn Column, unsigned Filters, std::initializer_list<std::string_view> SearchTerms, std::function<float(bool)> GetHeight, std::function<void(CUIRect, bool)> Render, float TopMargin = 0.0f) :
+		m_Column(Column),
+		m_TopMargin(TopMargin),
+		m_Filters(Filters),
+		m_vSearchTerms(SearchTerms),
+		m_GetHeight(std::move(GetHeight)),
+		m_Render(std::move(Render))
+	{
+	}
+};
 
 class CMenus : public CComponent
 {
@@ -48,7 +116,7 @@ public:
 	static constexpr float BUTTON_IMAGE_WIDTH_FACTOR = 4.0f;
 
 	int DoButton_Toggle(const void *pId, int Checked, const CUIRect *pRect, bool Active, unsigned Flags = BUTTONFLAG_LEFT);
-	int DoButton_Menu(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, unsigned Flags = BUTTONFLAG_LEFT, const char *pImageName = nullptr, int Corners = IGraphics::CORNER_ALL, float Rounding = 5.0f, float FontFactor = 0.0f, ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f), const void *pImageHotId = nullptr, SUIAnimator *pAnimator = nullptr);
+	int DoButton_Menu(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, unsigned Flags, const char *pImageName, int Corners, float Rounding, float FontFactor, ColorRGBA Color, const void *pImageHotId);
 	int DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, int Corners, SUIAnimator *pAnimator = nullptr, const ColorRGBA *pDefaultColor = nullptr, const ColorRGBA *pActiveColor = nullptr, const ColorRGBA *pHoverColor = nullptr, float EdgeRounding = 10.0f, const CCommunityIcon *pCommunityIcon = nullptr);
 
 	int DoButton_CheckBox_Common(const void *pId, const char *pText, const char *pBoxText, const CUIRect *pRect, unsigned Flags);
@@ -58,12 +126,18 @@ public:
 
 	bool DoLine_RadioMenu(CUIRect &View, const char *pLabel, std::vector<CButtonContainer> &vButtonContainers, const std::vector<const char *> &vLabels, const std::vector<int> &vValues, int &Value);
 
+	// EClient
+	bool DoLine_RadioMenu_Compact(CUIRect &View, const char *pLabel, std::vector<CButtonContainer> &vButtonContainers, const std::vector<const char *> &vLabels, const std::vector<int> &vValues, int &Value, float LabelSpacing = 5.0f, const std::vector<const char *> *pvTooltips = nullptr);
+	void DoLine_TimeOfDay(CUIRect &View, const char *pLabel, int *pMinuteOfDay);
+
 private:
 	CUi::SColorPickerPopupContext m_ColorPickerPopupContext;
 	ColorHSLA DoLine_ColorPicker(CButtonContainer *pResetId, float LineSize, float LabelSize, float BottomMargin, CUIRect *pMainRect, const char *pText, unsigned int *pColorValue, ColorRGBA DefaultColor, bool CheckBoxSpacing = true, int *pCheckBoxValue = nullptr, bool Alpha = false);
 	ColorHSLA DoButton_ColorPicker(const CUIRect *pRect, unsigned int *pHslaColor, bool Alpha);
 
 	int DoButton_GridHeader(const void *pId, const char *pText, int Checked, const CUIRect *pRect, int Align = TEXTALIGN_ML);
+	// Variant that keeps the caption's text container across frames, for grid headers that are rendered every frame.
+	int DoButton_GridHeader(const void *pId, CUIElement::SUIElementRect &RectEl, const char *pText, int Checked, const CUIRect *pRect, int Align = TEXTALIGN_ML);
 	int DoButton_Favorite(const void *pButtonId, const void *pParentId, bool Checked, const CUIRect *pRect);
 
 	std::optional<std::chrono::nanoseconds> m_SkinList7LastRefreshTime;
@@ -144,13 +218,6 @@ protected:
 	int m_Popup;
 	bool m_ShowStart;
 	bool m_MenuActive;
-	int64_t m_SettingsPageChangeTime;
-	int m_LastSettingsPage;
-	float m_SettingsSplitY;
-	float m_SettingsViewY;
-	float m_SettingsSplitX;
-	float m_SettingsViewX;
-	bool m_WasInSettings;
 
 	bool m_DummyNamePlatePreview = false;
 
@@ -569,7 +636,7 @@ protected:
 
 	// found in menus_settings.cpp
 	void RenderSettings(CUIRect MainView);
-	bool RenderHslaScrollbars(CUIRect *pRect, unsigned int *pColor, bool Alpha, float DarkestLight);
+	bool RenderHslaScrollbars(CUIRect *pRect, unsigned int *pColor, bool Alpha, float DarkestLight, bool Preview = true);
 
 	// found in menus_settings_assets.cpp
 	void RenderSettingsAssets(CUIRect MainView);
@@ -588,12 +655,7 @@ protected:
 
 	// found in menus_settings_ddnet.cpp
 	void RenderSettingsDDNet(CUIRect MainView);
-
-	// found in menus_settings_doclient.cpp
 	void RenderSettingsDOClient(CUIRect MainView);
-	void RenderDOClientSettings(CUIRect MainView);
-	void RenderDOClientWarList(CUIRect MainView);
-	void RegisterDOClientCommands();
 
 	// found in menus_settings_general.cpp
 	void RenderSettingsGeneral(CUIRect MainView);
@@ -713,6 +775,8 @@ public:
 		PAGE_SETTINGS,
 		PAGE_NETWORK,
 		PAGE_GHOST,
+		PAGE_ECLIENTNEWS,
+		PAGE_MODERATION,
 
 		PAGE_LENGTH,
 	};
@@ -726,11 +790,12 @@ public:
 		SETTINGS_APPEARANCE,
 		SETTINGS_CONTROLS,
 		SETTINGS_GRAPHICS,
+		SETTINGS_DOCLIENT,
 		SETTINGS_SOUND,
 		SETTINGS_DDNET,
 		SETTINGS_ASSETS,
-		SETTINGS_CREDITS,
-		SETTINGS_DOCLIENT,
+		SETTINGS_ENTITY,
+		SETTINGS_SKINPROFILES,
 
 		SETTINGS_LENGTH,
 	};
@@ -762,6 +827,8 @@ public:
 		SMALL_TAB_BROWSER_FILTER,
 		SMALL_TAB_BROWSER_INFO,
 		SMALL_TAB_BROWSER_FRIENDS,
+		SMALL_TAB_ECLIENT,
+		SMALL_TAB_MODERATION,
 
 		SMALL_TAB_LENGTH,
 	};
@@ -866,6 +933,8 @@ private:
 	CCommunityIcons m_CommunityIcons;
 	CMenusIngameTouchControls m_MenusIngameTouchControls;
 	friend CMenusIngameTouchControls;
+	// The moderation page is a component, it only borrows the menu button helpers
+	friend class CMenusModeration;
 	CMenusSettingsControls m_MenusSettingsControls;
 	friend CMenusSettingsControls;
 	CMenusStart m_MenusStart;
@@ -875,5 +944,183 @@ private:
 	// found in menus_ingame.cpp
 	void RenderInGameNetwork(CUIRect MainView);
 	void RenderGhost(CUIRect MainView);
+
+	// EClient
+	void RenderChatPreview(CUIRect MainView);
+	void RenderSettingsEntity(CUIRect MainView);
+	void RenderSettingsEClient(CUIRect MainView);
+	void RenderSettingsWarList(CUIRect MainView);
+	void RenderSettingsProfiles(CUIRect MainView);
+	void RenderSettingsStatusbar(CUIRect MainView);
+	void RenderSettingsPlayerActions(CUIRect MainView);
+	void RenderSettingsBindwheel(CUIRect MainView);
+	void RenderEClientInfoPage(CUIRect MainView);
+	void RenderEClientNewsPage(CUIRect MainView);
+
+	const CWarType *m_pRemoveWarType = nullptr;
+	void PopupConfirmRemoveWarType();
+
+	// Warlist
+
+	class CGenericPlayerInfo
+	{
+	public:
+		char m_aName[MAX_NAME_LENGTH];
+		char m_aClan[MAX_CLAN_LENGTH];
+
+		// ServerInfo
+		char m_aAddress[MAX_SERVER_ADDRESSES * NETADDR_MAXSTRSIZE];
+		int m_Latency; // in ms
+		char m_aGameType[16];
+		char m_aMap[MAX_MAP_LENGTH];
+
+		int m_ServerIndex;
+
+		char m_aCommunityId[32];
+
+		bool m_IsPlayer;
+		bool m_IsAfk;
+		// skin
+		char m_aSkin[MAX_SKIN_LENGTH];
+		bool m_CustomSkinColors;
+		int m_CustomSkinColorBody;
+		int m_CustomSkinColorFeet;
+
+		CGenericPlayerInfo(const CServerInfo::CClient *pOnlineClient, const CServerInfo *pServer)
+		{
+			str_copy(m_aName, pOnlineClient->m_aName);
+			str_copy(m_aClan, pOnlineClient->m_aClan);
+
+			str_copy(m_aAddress, pServer->m_aAddress);
+			m_Latency = pServer->m_Latency;
+			str_copy(m_aGameType, pServer->m_aGameType);
+			str_copy(m_aMap, pServer->m_aMap);
+			str_copy(m_aCommunityId, pServer->m_aCommunityId);
+			m_ServerIndex = pServer->m_ServerIndex;
+			m_IsPlayer = pOnlineClient->m_Player;
+			m_IsAfk = pOnlineClient->m_Afk;
+			str_copy(m_aSkin, pOnlineClient->m_aSkin);
+			m_CustomSkinColors = pOnlineClient->m_CustomSkinColors;
+			m_CustomSkinColorBody = pOnlineClient->m_CustomSkinColorBody;
+			m_CustomSkinColorFeet = pOnlineClient->m_CustomSkinColorFeet;
+		}
+
+		const char *Name() const { return m_aName; }
+		const char *Clan() const { return m_aClan; }
+		bool IsPlayer() const { return m_IsPlayer; }
+		bool IsAfk() const { return m_IsAfk; }
+		const char *Skin() const { return m_aSkin; }
+		bool CustomSkinColors() const { return m_CustomSkinColors; }
+		int CustomSkinColorBody() const { return m_CustomSkinColorBody; }
+		int CustomSkinColorFeet() const { return m_CustomSkinColorFeet; }
+		int Latency() const { return m_Latency; }
+
+		const void *ListItemId() const { return &m_aName; }
+		const void *CommunityTooltipId() const { return &m_IsPlayer; }
+		const void *SkinTooltipId() const { return &m_aSkin; }
+
+		bool operator<(const CGenericPlayerInfo &Other) const
+		{
+			const int Result = str_comp_nocase(m_aName, Other.m_aName);
+			return Result < 0 || (Result == 0 && str_comp_nocase(m_aClan, Other.m_aClan) < 0);
+		}
+	};
+
+	class CWarlistCache : public CGenericPlayerInfo
+	{
+	public:
+		CWarType *m_pWarType;
+		CWarEntry *m_pEntry;
+
+		CWarlistCache(CWarEntry *pEntry, const CServerInfo::CClient *pOnlineClient, const CServerInfo *pServer) :
+			CGenericPlayerInfo(pOnlineClient, pServer)
+		{
+			m_pEntry = pEntry;
+			m_pWarType = pEntry->m_pWarType;
+		}
+
+		const void *RemoveButtonId() const { return &m_pWarType; }
+
+		bool operator<(const CWarlistCache &Other) const
+		{
+			const int Result = str_comp_nocase(m_aName, Other.m_aName);
+			return Result < 0 || (Result == 0 && str_comp_nocase(m_aClan, Other.m_aClan) < 0);
+		}
+	};
+
+	void ServerBrowserUpdate();
+	std::vector<CWarlistCache> m_vWarlistCache;
+	bool m_OnlinePlayersCacheDirty = true;
+	const CWarlistCache *m_pRemoveEntry = nullptr;
+	void RenderWarlistPlayers(CUIRect &View, CUIRect &List, CScrollRegion &ScrollRegion);
+
+	std::vector<CGenericPlayerInfo> m_vEntityUsersCache;
+	void RenderEntityClientUsers(CUIRect &View, CUIRect &List, CScrollRegion &ScrollRegion);
+
+	int GetWartypePlayerCount(const CWarType *pWarType) const
+	{
+		int Count = 0;
+		for(const auto &Entry : m_vWarlistCache)
+		{
+			if(Entry.m_pWarType == pWarType)
+				Count++;
+		}
+		return Count;
+	}
+
+	void RenderSettingsModuleSearchBar(CScrollRegion &ScrollRegion, CUIRect &MainView, const std::vector<CSettingsModule> &vModules, CLineInputBuffered<32> &SearchInput);
+	void DoHudEditorButton(CButtonContainer *pId, const CUIRect *pRect);
+
+	class CPopupServerSelectionContext
+	{
+	public:
+		CMenus *m_pMenus;
+		char m_aMapName[MAX_MAP_LENGTH];
+		char m_aCommunityId[CServerInfo::MAX_COMMUNITY_ID_LENGTH];
+		unsigned m_MapCrc;
+		const SPopupMenuId *m_pPopupId;
+		vec2 m_PopupAnchor;
+		float m_ExpandedWidth;
+		float m_ExpandedHeight;
+		bool m_OpenedThisFrame;
+		CButtonContainer m_NextMapVersionButton;
+	};
+	static CUi::EPopupMenuFunctionResult PopupServerSelection(void *pContext, CUIRect View, bool Active);
+
+	class CPopupWarlistTypeConfigContext
+	{
+	public:
+		CMenus *m_pMenus;
+		size_t m_WarType;
+	};
+	static CUi::EPopupMenuFunctionResult PopupWarlistTypeConfig(void *pContext, CUIRect View, bool Active);
+	static CUi::EPopupMenuFunctionResult PopupFrozenHudWarlistConfig(void *pContext, CUIRect View, bool Active);
+
+public:
+	int DoButtonLineSize_Menu(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, float LineSize, bool Fake = false, const char *pImageName = nullptr, int Corners = IGraphics::CORNER_ALL, float Rounding = 5.0f, float FontFactor = 0.0f, ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f));
+	int DoButtonForceFontSize_Menu(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, float LineSize, bool Fake = false, const char *pImageName = nullptr, int Corners = IGraphics::CORNER_ALL, float Rounding = 5.0f, float FontFactor = 0.0f, ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f));
+	void RenderFontIcon(CUIRect Rect, const char *pText, float Size, int Align);
+
+	int DoButtonNoRect_FontIcon(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, int Corners = IGraphics::CORNER_ALL);
+	int DoButton_Menu(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, unsigned Flags = BUTTONFLAG_LEFT, const char *pImageName = nullptr, int Corners = IGraphics::CORNER_ALL, float Rounding = 5.0f, float FontFactor = 0.0f, ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f), float Size = 0.0f);
+
+	bool DoLine_KeyReader(CUIRect &View, CButtonContainer &ReaderButton, CButtonContainer &ClearButton, const char *pName, const char *pCommand);
+
+	void UpdateOnlinePlayerCache();
+
+	int m_MenusRainbowColor;
+
+	vec2 TeeEyeDirection(vec2 Pos);
+
+	void RenderDraggableTee(CUIRect MainView, vec2 StartPos, vec2 &CurPos, bool &Dragging, vec2 TeeDirection, CTeeRenderInfo *pInfo);
+	void RenderTee(vec2 Pos, vec2 TeeDirection, const CAnimState *pAnim, CTeeRenderInfo *pInfo, int EyeEmote, bool HappyHover = true);
+
+	// EClient
+	// found in menus_demo.cpp
+	// Copy of demo actions rect
+	CUIRect m_DemoControlsRect;
+
+	int GetPopup() const { return m_Popup; }
+	bool IsMenuActive() const { return m_MenuActive; }
 };
 #endif

@@ -42,11 +42,12 @@ std::array<vec2, CMenuBackground::NUM_POS> GenerateMenuBackgroundPositions()
 	Positions[CMenuBackground::POS_SETTINGS_SOUND] = vec2(1000.0f, 1000.0f);
 	Positions[CMenuBackground::POS_SETTINGS_DDNET] = vec2(1200.0f, 200.0f);
 	Positions[CMenuBackground::POS_SETTINGS_ASSETS] = vec2(500.0f, 500.0f);
-	Positions[CMenuBackground::POS_SETTINGS_CREDITS] = vec2(1100.0f, 1000.0f);
+	Positions[CMenuBackground::POS_SETTINGS_ENTITY] = vec2(700.0f, 700.0f);
+	Positions[CMenuBackground::POS_SETTINGS_SKINPROFILES] = vec2(300.0f, 1100.0f);
 	for(int i = 0; i < CMenuBackground::POS_BROWSER_CUSTOM_NUM; ++i)
 		Positions[CMenuBackground::POS_BROWSER_CUSTOM0 + i] = vec2(500.0f + (75.0f * (float)i), 650.0f - (75.0f * (float)i));
 	for(int i = 0; i < CMenuBackground::POS_SETTINGS_RESERVED_NUM; ++i)
-		Positions[CMenuBackground::POS_SETTINGS_RESERVED0 + i] = vec2(1300.0f + (75.0f * (float)i), 1000.0f);
+		Positions[CMenuBackground::POS_SETTINGS_RESERVED0 + i] = vec2(0, 0);
 	for(int i = 0; i < CMenuBackground::POS_RESERVED_NUM; ++i)
 		Positions[CMenuBackground::POS_RESERVED0 + i] = vec2(0, 0);
 
@@ -160,7 +161,7 @@ int CMenuBackground::ThemeScan(const char *pName, int IsDir, int DirType, void *
 
 	if(time_get_nanoseconds() - pSelf->m_ThemeScanStartTime > 500ms)
 	{
-		pSelf->GameClient()->m_Menus.RenderLoading(Localize("Loading menu themes"), "", 0);
+		pSelf->GameClient()->m_Menus.RenderLoading(Localize("Loading E-Client"), "Loading themes", 0);
 	}
 	return 0;
 }

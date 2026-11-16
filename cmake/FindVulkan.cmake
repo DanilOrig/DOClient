@@ -19,13 +19,20 @@ if(NOT VULKAN_FOUND)
       NAMES vulkan/vulkan.h
     )
   elseif(TARGET_OS STREQUAL "mac")
-    find_library(VULKAN_LIBRARIES
-      NAMES MoltenVK
-    )
+    # Prefer the SDK's dynamic library. find_library may select its
+    # MoltenVK.xcframework static archive, which needs extra Apple frameworks.
+    if(EXISTS "$ENV{VULKAN_SDK}/lib/libMoltenVK.dylib")
+      set(VULKAN_LIBRARIES "$ENV{VULKAN_SDK}/lib/libMoltenVK.dylib")
+    else()
+      find_library(VULKAN_LIBRARIES
+        NAMES MoltenVK
+      )
+    endif()
 
     find_path(
       VULKAN_INCLUDE_DIRS
       NAMES vulkan/vulkan.h
+      HINTS "$ENV{VULKAN_SDK}/include"
     )
   else()
     set_extra_dirs_lib(VULKAN vulkan)

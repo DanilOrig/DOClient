@@ -17,6 +17,7 @@
 #include <engine/graphics.h>
 #include <engine/shared/config.h>
 #include <engine/shared/jobs.h>
+#include <engine/shared/night_shift.h>
 #include <engine/storage.h>
 
 #include <generated/data_types.h>
@@ -164,6 +165,11 @@ void CGraphics_Threaded::BlendNormal()
 void CGraphics_Threaded::BlendAdditive()
 {
 	m_State.m_BlendMode = EBlendMode::ADDITIVE;
+}
+
+void CGraphics_Threaded::BlendMultiply()
+{
+	m_State.m_BlendMode = EBlendMode::MULTIPLY;
 }
 
 void CGraphics_Threaded::WrapNormal()
@@ -330,8 +336,10 @@ IGraphics::CTextureHandle CGraphics_Threaded::LoadSpriteTexture(const CImageInfo
 	// check for invisible texture, maybe due to outdated game assets
 	if(FallbackImageInfo.has_value() && IsImageSubFullyTransparent(FromImageInfo, x, y, w, h))
 	{
-		log_warn("graphics", "Asset '%s' appears to be invisible, falling back to default", pSprite->m_pName);
-		return LoadSpriteTexture(FallbackImageInfo.value(), std::nullopt, pSprite);
+		// EClient: Do not fall back to default: players intentionally use transparent custom assets (e.g. hooks/cursors).
+		log_warn("graphics", "Asset '%s' appears to be invisible", pSprite->m_pName);
+		// log_warn("graphics", "Asset '%s' appears to be invisible, falling back to default", pSprite->m_pName);
+		// return LoadSpriteTexture(FallbackImageInfo.value(), std::nullopt, pSprite);
 	}
 
 	CImageInfo SpriteInfo;
@@ -1215,6 +1223,81 @@ void CGraphics_Threaded::DrawRect(float x, float y, float w, float h, ColorRGBA 
 	SetColor(Color);
 	DrawRectExt(x, y, w, h, Rounding, Corners);
 	QuadsEnd();
+}
+
+void CGraphics_Threaded::DrawRectOutline(float x, float y, float w, float h, ColorRGBA Color, int Corners, int Sides, float Rounding)
+{
+	const int NumSegments = 8;
+	const float AngleStep = (pi / 2.0f) / NumSegments;
+
+	std::vector<IGraphics::CLineItem> Lines;
+
+	auto AddCornerArc = [&](float Cx, float Cy, float StartAngle, int CornerFlag) {
+		if((Corners & CornerFlag) && Rounding > 0.0f)
+		{
+			for(int i = 0; i < NumSegments; ++i)
+			{
+				float a0 = StartAngle + i * AngleStep;
+				float a1 = StartAngle + (i + 1) * AngleStep;
+				float x0 = Cx + std::cos(a0) * Rounding;
+				float y0 = Cy + std::sin(a0) * Rounding;
+				float x1 = Cx + std::cos(a1) * Rounding;
+				float y1 = Cy + std::sin(a1) * Rounding;
+				Lines.emplace_back(x0, y0, x1, y1);
+			}
+		}
+	};
+
+	const bool Tl = (Corners & IGraphics::CORNER_TL);
+	const bool Tr = (Corners & IGraphics::CORNER_TR);
+	const bool Bl = (Corners & IGraphics::CORNER_BL);
+	const bool Br = (Corners & IGraphics::CORNER_BR);
+
+	float LengthEnd = 0.0f;
+	float LengthStart = 0.0f;
+
+	// Top
+	if(Sides & IGraphics::SIDE_T)
+	{
+		LengthEnd = (Rounding > 0.0f && Tl) ? Rounding : 0.0f;
+		LengthStart = (Rounding > 0.0f && Tr) ? Rounding : 0.0f;
+		Lines.emplace_back(x + LengthEnd, y, x + w - LengthStart, y);
+	}
+
+	// Right
+	if(Sides & IGraphics::SIDE_R)
+	{
+		LengthEnd = (Rounding > 0.0f && Tr) ? Rounding : 0.0f;
+		LengthStart = (Rounding > 0.0f && Br) ? Rounding : 0.0f;
+		Lines.emplace_back(x + w, y + LengthEnd, x + w, y + h - LengthStart);
+	}
+
+	// Bottom
+	if(Sides & IGraphics::SIDE_B)
+	{
+		LengthEnd = (Rounding > 0.0f && Br) ? Rounding : 0.0f;
+		LengthStart = (Rounding > 0.0f && Bl) ? Rounding : 0.0f;
+		Lines.emplace_back(x + w - LengthEnd, y + h, x + LengthStart, y + h);
+	}
+
+	// Left
+	if(Sides & IGraphics::SIDE_L)
+	{
+		LengthEnd = (Rounding > 0.0f && Bl) ? Rounding : 0.0f;
+		LengthStart = (Rounding > 0.0f && Tl) ? Rounding : 0.0f;
+		Lines.emplace_back(x, y + h - LengthEnd, x, y + LengthStart);
+	}
+
+	AddCornerArc(x + Rounding, y + Rounding, pi, IGraphics::CORNER_TL); // Top-left
+	AddCornerArc(x + w - Rounding, y + Rounding, -pi / 2.0f, IGraphics::CORNER_TR); // Top-right
+	AddCornerArc(x + w - Rounding, y + h - Rounding, 0.0f, IGraphics::CORNER_BR); // Bottom-right
+	AddCornerArc(x + Rounding, y + h - Rounding, pi / 2.0f, IGraphics::CORNER_BL); // Bottom-left
+
+	TextureClear();
+	LinesBegin();
+	SetColor(Color);
+	LinesDraw(Lines.data(), Lines.size());
+	LinesEnd();
 }
 
 void CGraphics_Threaded::DrawRect4(float x, float y, float w, float h, ColorRGBA ColorTopLeft, ColorRGBA ColorTopRight, ColorRGBA ColorBottomLeft, ColorRGBA ColorBottomRight, int Corners, float Rounding)
@@ -2117,7 +2200,7 @@ int CGraphics_Threaded::IssueInit()
 		Flags |= IGraphicsBackend::INITFLAG_VSYNC;
 	}
 
-	const int Result = m_pBackend->Init("DDNet Client", &g_Config.m_GfxScreen, &g_Config.m_GfxScreenWidth, &g_Config.m_GfxScreenHeight, &g_Config.m_GfxScreenRefreshRate, &g_Config.m_GfxFsaaSamples, Flags, &m_DesktopSize.x, &m_DesktopSize.y, &m_ScreenWidth, &m_ScreenHeight, m_pStorage);
+	const int Result = m_pBackend->Init("E-Client", &g_Config.m_GfxScreen, &g_Config.m_GfxScreenWidth, &g_Config.m_GfxScreenHeight, &g_Config.m_GfxScreenRefreshRate, &g_Config.m_GfxFsaaSamples, Flags, &m_DesktopSize.x, &m_DesktopSize.y, &m_ScreenWidth, &m_ScreenHeight, m_pStorage);
 	m_DrawableWidth = m_ScreenWidth;
 	m_DrawableHeight = m_ScreenHeight;
 	AddBackEndWarningIfExists();
@@ -2719,6 +2802,33 @@ void CGraphics_Threaded::ReadFramebuffer(CImageInfo &Image)
 	WaitForIdle();
 }
 
+void CGraphics_Threaded::RenderNightShift()
+{
+	// Drawing the tint here rather than at the end of a render function means every frame
+	// gets it, including the loading screens and the editor, which do their own swapping.
+	if(m_Drawing != EDrawing::NONE)
+		return;
+
+	const ColorRGBA Tint = CNightShift::Tint();
+	if(Tint.r >= 1.0f && Tint.g >= 1.0f && Tint.b >= 1.0f)
+		return;
+
+	const CScreenRect PreviousScreen = GetScreen();
+	ClipDisable();
+	MapScreen(CScreenRect(0.0f, 0.0f, 1.0f, 1.0f));
+	TextureClear();
+	// Multiplying scales the colors already in the frame, which warms them without
+	// washing out the dark parts the way an alpha blended overlay would.
+	BlendMultiply();
+	QuadsBegin();
+	SetColor(Tint);
+	const CQuadItem QuadItem(0.0f, 0.0f, 1.0f, 1.0f);
+	QuadsDrawTL(&QuadItem, 1);
+	QuadsEnd();
+	BlendNormal();
+	MapScreen(PreviousScreen);
+}
+
 void CGraphics_Threaded::Swap()
 {
 #if defined(CONF_PLATFORM_IOS)
@@ -2731,6 +2841,9 @@ void CGraphics_Threaded::Swap()
 		GotResized(g_Config.m_GfxScreenWidth, g_Config.m_GfxScreenHeight, -1);
 	}
 #endif
+
+	// EClient
+	RenderNightShift();
 
 	bool Swapped = false;
 	ScreenshotDirect(&Swapped);

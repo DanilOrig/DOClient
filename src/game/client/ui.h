@@ -228,6 +228,10 @@ class CLabelResult
 {
 public:
 	bool m_Truncated;
+	// EClient
+	vec2 m_TextPos;
+	float m_TextSize;
+	float m_TextWidth;
 };
 
 enum EButtonFlags : unsigned
@@ -478,6 +482,7 @@ private:
 		const SPopupMenuId *m_pId;
 		SPopupMenuProperties m_Props;
 		CUIRect m_Rect;
+		bool m_KeepOpenOnOutsideRelease = false;
 		void *m_pContext;
 		FPopupMenuFunction m_pfnFunc;
 	};
@@ -545,7 +550,7 @@ public:
 
 	void SetEnabled(bool Enabled) { m_Enabled = Enabled; }
 	bool Enabled() const { return m_Enabled; }
-	void Update();
+	void Update(bool IsChat = false);
 	void DebugRender(float X, float Y);
 
 	vec2 MousePos() const { return m_MousePos; }
@@ -556,7 +561,10 @@ public:
 	float MouseDeltaY() const { return m_MouseDelta.y; }
 	vec2 UpdatedMousePos() const { return m_UpdatedMousePos; }
 	vec2 UpdatedMouseDelta() const { return m_UpdatedMouseDelta; }
+	int LastMouseButton(int Index) const { return (m_LastMouseButtons >> Index) & 1; } // TClient
 	int MouseButton(int Index) const { return (m_MouseButtons >> Index) & 1; }
+	// EClient: for a component about to start driving the ui after a lull, see the definition
+	void ResumeMouseButtons();
 	int MouseButtonClicked(int Index) const { return MouseButton(Index) && !((m_LastMouseButtons >> Index) & 1); }
 	bool CheckMouseLock()
 	{
@@ -613,6 +621,9 @@ public:
 	void SetMouseSlow(bool MouseSlow) { m_MouseSlow = MouseSlow; }
 
 	bool ConsumeHotkey(EHotkey Hotkey);
+	// EClient: for a component that handles its own input and so cannot hand the whole event to
+	// OnInput, but still has ui of its own that waits on a hotkey
+	void SetHotkey(EHotkey Hotkey) { m_HotkeysPressed |= Hotkey; }
 	void ClearHotkeys() { m_HotkeysPressed = 0; }
 	bool OnInput(const IInput::CEvent &Event);
 
@@ -716,8 +727,13 @@ public:
 		SCROLLBAR_OPTION_DELAYUPDATE = 1 << 3,
 	};
 	float DoScrollbarV(const void *pId, const CUIRect *pRect, float Current);
-	float DoScrollbarH(const void *pId, const CUIRect *pRect, float Current, const ColorRGBA *pColorInner = nullptr);
+	float DoScrollbarH(const void *pId, const CUIRect *pRect, float Current, const ColorRGBA *pColorInner = nullptr, bool Render = true);
+	int ScrollbarKeyboardAdjust(const CUIRect *pRect, int Value, int Min, int Max);
 	bool DoScrollbarOption(const void *pId, int *pOption, const CUIRect *pRect, const char *pStr, int Min, int Max, const IScrollbarScale *pScale = &ms_LinearScrollbarScale, unsigned Flags = 0u, const char *pSuffix = "");
+	bool DoScrollbarOptionRender(const void *pId, int *pOption, const CUIRect *pRect, const char *pStr, int Min, int Max, const IScrollbarScale *pScale = &ms_LinearScrollbarScale, unsigned Flags = 0u);
+
+	bool DoSliderWithScaledValue(const void *pId, int *pOption, const CUIRect *pRect, const char *pStr, int Min, int Max, int Scale, const IScrollbarScale *pScale, unsigned Flags = 0u, const char *pSuffix = "");
+	bool DoFloatScrollBar(const void *pId, int *pOption, const CUIRect *pRect, const char *pStr, int Min, int Max, int DivideBy, const IScrollbarScale *pScale, unsigned Flags, const char *pSuffix);
 
 	// progress bar
 	void RenderProgressBar(CUIRect ProgressBar, float Progress);
@@ -737,6 +753,8 @@ public:
 
 	// found in ui_popups.cpp
 	void DoPopupMenu(const SPopupMenuId *pId, float X, float Y, float Width, float Height, void *pContext, FPopupMenuFunction pfnFunc, const SPopupMenuProperties &Props = {});
+	bool UpdatePopupMenuRect(const SPopupMenuId *pId, float X, float Y, float Width, float Height);
+	void KeepPopupOpenOnOutsideRelease(const SPopupMenuId *pId);
 	void RenderPopupMenus();
 	void ClosePopupMenu(const SPopupMenuId *pId, bool IncludeDescendants = false);
 	void ClosePopupMenus();
@@ -790,7 +808,7 @@ public:
 	struct SSelectionPopupContext : public SPopupMenuId
 	{
 		CUi *m_pUI; // set by CUi when popup is shown
-		CScrollRegion *m_pScrollRegion; // set by CUi when popup is shown
+		CScrollRegion *m_pScrollRegion;
 		SPopupMenuProperties m_Props;
 		char m_aMessage[256];
 		std::vector<std::string> m_vEntries;
@@ -805,10 +823,13 @@ public:
 		float m_AlignmentHeight;
 		bool m_TransparentButtons;
 
+		bool m_SpecialFontRenderMode = false; // TClient
+
 		SSelectionPopupContext();
 		void Reset();
 	};
 	void ShowPopupSelection(float X, float Y, SSelectionPopupContext *pContext);
+	void UpdatePopupMenuOffset(const SSelectionPopupContext *pContext, float NewX, float NewY); // EClient
 
 	struct SColorPickerPopupContext : public SPopupMenuId
 	{
@@ -846,20 +867,12 @@ public:
 	};
 	int DoDropDown(CUIRect *pRect, int CurSelection, const char **pStrs, int Num, SDropDownState &State);
 
-	// tooltips
-	/**
-	 * Adds the tooltip to a cache and renders it when active.
-	 *
-	 * On the first call to this function, the data passed is cached, afterwards the calls are used to detect if the tooltip should be activated.
-	 * If multiple tooltips cover the same rect or the rects intersect, then the tooltip that is added later has priority.
-	 *
-	 * @param pId The ID of the tooltip. Usually a reference to some g_Config value.
-	 * @param pNearRect Place the tooltip near this rect.
-	 * @param pText The text to display in the tooltip.
-	 * @param WidthHint The maximum width of the tooltip, or -1.0f for unlimited.
-	 */
+	// EClient
+	float DoServerSideRainbowScrollbar(const void *pId, const CUIRect *pRect, float Current, const ColorRGBA *pColorInner, bool Draggable);
+
 	void DoToolTip(const void *pId, const CUIRect *pNearRect, const char *pText, float WidthHint = -1.0f) const;
 	void DoToolTip(const CTooltip &Tooltip) const;
+	void DoToolTipFade(const void *pId, const CUIRect *pNearRect, const char *pText, float FadeTime) const;
 	void OnRenderTooltip() const { m_pTooltips->OnRender(); }
 	void OnReset() const { m_pTooltips->OnReset(); }
 };

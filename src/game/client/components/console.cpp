@@ -789,6 +789,8 @@ void CGameConsole::CInstance::PrintLine(const char *pLine, int Len, ColorRGBA Pr
 	pEntry->m_Length = Len;
 	pEntry->m_LineCount = -1;
 	str_copy(pEntry->m_aText, pLine, Len + 1);
+
+	m_pGameConsole->GameClient()->m_Webhook.ConsoleLine(m_Type, pLine);
 }
 
 int CGameConsole::CInstance::GetLinesToScroll(int Direction, int LinesToScroll)
@@ -863,6 +865,7 @@ bool CGameConsole::CInstance::IsInputHidden() const
 void CGameConsole::CInstance::SetSearching(bool Searching)
 {
 	m_Searching = Searching;
+
 	if(Searching)
 	{
 		m_Input.SetClipboardLineCallback(nullptr); // restore default behavior (replace newlines with spaces)
@@ -906,7 +909,6 @@ void CGameConsole::CInstance::UpdateSearch()
 	if(SearchChanged)
 	{
 		m_CurrentMatchIndex = -1;
-		m_HasSelection = false;
 	}
 
 	ITextRender *pTextRender = m_pGameConsole->Ui()->TextRender();
@@ -1369,10 +1371,8 @@ void CGameConsole::OnRender()
 		pConsole->m_BoundingBox = pConsole->m_Input.Render(&InputCursorRect, FONT_SIZE, TEXTALIGN_BL, Changed, Screen.w - 10.0f - x, LINE_SPACING);
 		if(pConsole->m_LastInputHeight == 0.0f && pConsole->m_BoundingBox.m_H != 0.0f)
 			pConsole->m_LastInputHeight = pConsole->m_BoundingBox.m_H;
-		if(pConsole->m_Input.HasSelection())
+		if(pConsole->m_Input.HasSelection() && !pConsole->m_Searching)
 			pConsole->m_HasSelection = false; // Clear console selection if we have a line input selection
-
-		y -= pConsole->m_BoundingBox.m_H - FONT_SIZE;
 
 		if(pConsole->m_LastInputHeight != pConsole->m_BoundingBox.m_H)
 		{
@@ -1380,6 +1380,9 @@ void CGameConsole::OnRender()
 			pConsole->m_MouseIsPress = false;
 			pConsole->m_LastInputHeight = pConsole->m_BoundingBox.m_H;
 		}
+
+		float InputHeight = std::max(pConsole->m_BoundingBox.m_H, FONT_SIZE);
+		y -= InputHeight - FONT_SIZE;
 
 		// render possible commands
 		if(!pConsole->m_Searching && (m_ConsoleType == CONSOLETYPE_LOCAL || Client()->RconAuthed()) && !pConsole->m_Input.IsEmpty())
@@ -1651,6 +1654,11 @@ void CGameConsole::OnRender()
 		// render version
 		str_copy(aBuf, "v" GAME_VERSION " on " CONF_PLATFORM_STRING " " CONF_ARCH_STRING);
 		TextRender()->Text(ButtonBar.x + ButtonBar.w - TextRender()->TextWidth(FONT_SIZE, aBuf) - 10.0f, FONT_SIZE / 2.f, FONT_SIZE, aBuf);
+
+		//<E-Client
+		const char *pClientVersion = CLIENT_NAME " v" ECLIENT_VERSION;
+		TextRender()->Text(ButtonBar.x + ButtonBar.w - TextRender()->TextWidth(FONT_SIZE, pClientVersion) - 10.0f, FONT_SIZE * 1.55f, FONT_SIZE, pClientVersion);
+		// EClient>
 	}
 }
 
@@ -1677,6 +1685,14 @@ bool CGameConsole::OnInput(const IInput::CEvent &Event)
 	}
 
 	return true;
+}
+
+void CGameConsole::Close()
+{
+	// Toggle only closes the console when it is handed the type that is currently open, and
+	// leaves it in CONSOLE_CLOSING, which still reports as active
+	if(m_ConsoleState == CONSOLE_OPEN || m_ConsoleState == CONSOLE_OPENING)
+		Toggle(m_ConsoleType);
 }
 
 void CGameConsole::Toggle(int Type)
@@ -1714,6 +1730,19 @@ void CGameConsole::Toggle(int Type)
 		}
 	}
 	m_ConsoleType = Type;
+}
+
+void CGameConsole::SetRemoteConsoleInput(const char *pText, bool Open)
+{
+	if(Open && (m_ConsoleType != CONSOLETYPE_REMOTE || (m_ConsoleState != CONSOLE_OPEN && m_ConsoleState != CONSOLE_OPENING)))
+		Toggle(CONSOLETYPE_REMOTE);
+
+	if(m_RemoteConsole.m_Searching)
+		m_RemoteConsole.SetSearching(false);
+
+	m_RemoteConsole.m_Input.Set(pText);
+	m_RemoteConsole.m_Input.SetCursorOffset(m_RemoteConsole.m_Input.GetLength());
+	m_RemoteConsole.m_Input.SelectNothing();
 }
 
 void CGameConsole::ConToggleLocalConsole(IConsole::IResult *pResult, void *pUserData)

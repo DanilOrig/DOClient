@@ -1,11 +1,15 @@
 #ifndef GAME_CLIENT_COMPONENTS_FREEZEBARS_H
 #define GAME_CLIENT_COMPONENTS_FREEZEBARS_H
+
+#include <base/color.h>
+
 #include <game/client/component.h>
 
 class CFreezeBars : public CComponent
 {
+	bool RenderKillBar();
 	void RenderFreezeBar(int ClientId);
-	void RenderFreezeBarPos(float x, float y, float Width, float Height, float Progress, float Alpha = 1.0f);
+	void RenderFreezeBarPos(float x, float y, float Width, float Height, float Progress, ColorRGBA Color);
 	bool IsPlayerInfoAvailable(int ClientId) const;
 
 public:

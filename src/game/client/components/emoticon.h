@@ -11,6 +11,10 @@
 
 class CEmoticon : public CComponent
 {
+	float m_AnimationTime = 0.0f;
+	float m_aAnimationTimeEmotes[NUM_EMOTICONS] = {0};
+	float m_aAnimationTimeEyeEmotes[NUM_EMOTES] = {0};
+
 	bool m_WasActive;
 	bool m_Active;
 
@@ -20,7 +24,6 @@ class CEmoticon : public CComponent
 
 	CUi::CTouchState m_TouchState;
 	bool m_TouchPressedOutside;
-	int64_t m_OpenTime;
 
 	static void ConKeyEmoticon(IConsole::IResult *pResult, void *pUserData);
 	static void ConEmote(IConsole::IResult *pResult, void *pUserData);
@@ -40,6 +43,9 @@ public:
 	void EyeEmote(int EyeEmote);
 
 	bool IsActive() const { return m_Active; }
+
+	friend class CBindWheel;
+	friend class CPlayerActions;
 };
 
 #endif

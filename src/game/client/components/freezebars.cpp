@@ -1,17 +1,76 @@
 #include "freezebars.h"
 
-#include <game/client/gameclient.h>
+#include <base/color.h>
+#include <base/system.h>
+#include <base/vmath.h>
 
-void CFreezeBars::RenderFreezeBar(const int ClientId)
+#include <engine/client.h>
+#include <engine/graphics.h>
+#include <engine/shared/config.h>
+#include <engine/shared/protocol.h>
+
+#include <game/client/gameclient.h>
+#include <game/gamecore.h>
+
+#include <algorithm>
+
+bool CFreezeBars::RenderKillBar()
 {
+	if(!g_Config.m_ClFreezeKill || !GameClient()->CurrentRaceTime())
+		return false;
+
+	int ClientId = GameClient()->m_Snap.m_LocalClientId;
+
 	const float FreezeBarWidth = 64.0f;
 	const float FreezeBarHalfWidth = 32.0f;
 	const float FreezeBarHeight = 16.0f;
 
 	// pCharacter contains the predicted character for local players or the last snap for players who are spectated
-	CCharacterCore *pCharacter = &GameClient()->m_aClients[ClientId].m_Predicted;
+	CCharacterCore *pCharacter = &GameClient()->m_aClients[ClientId].m_RegularPredicted;
 
-	if(pCharacter->m_FreezeEnd <= 0 || pCharacter->m_FreezeStart == 0 || pCharacter->m_FreezeEnd <= pCharacter->m_FreezeStart || !GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo || (pCharacter->m_IsInFreeze && g_Config.m_ClFreezeBarsAlphaInsideFreeze == 0))
+	if(pCharacter->m_FreezeEnd <= 0 || pCharacter->m_FreezeStart == 0 || pCharacter->m_FreezeEnd <= pCharacter->m_FreezeStart || !GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo)
+		return false;
+
+	// A QFr quad counts as full freeze here too, see RenderFreezeBar
+	const bool IsInFreeze = pCharacter->m_IsInFreeze || GameClient()->m_aClients[ClientId].m_InsideQuadFreeze;
+	if(g_Config.m_ClFreezeKillOnlyFullFrozen && !IsInFreeze)
+		return false;
+
+	float Time = (static_cast<float>(GameClient()->m_FreezeKill.m_LastFreeze) - time_get());
+	float Max = g_Config.m_ClFreezeKillMs / 1000.0f;
+	float FreezeProgress = std::clamp(Time / time_freq(), 0.0f, Max) / Max;
+	if(FreezeProgress <= 0.0f)
+		return false;
+
+	vec2 Position = GameClient()->m_aClients[ClientId].m_RenderPos;
+	Position.x -= FreezeBarHalfWidth;
+	Position.y += 22.0f;
+
+	float Alpha = GameClient()->TeeRenderAlpha(ClientId); // EClient
+
+	const ColorRGBA Color = ColorRGBA(0.6f, 1.0f, 1.6f, Alpha);
+
+	RenderFreezeBarPos(Position.x, Position.y, FreezeBarWidth, FreezeBarHeight, FreezeProgress, Color);
+	return true;
+}
+
+void CFreezeBars::RenderFreezeBar(int ClientId)
+{
+	if(!g_Config.m_ClShowFreezeBars)
+		return;
+
+	const float FreezeBarWidth = 64.0f;
+	const float FreezeBarHalfWidth = 32.0f;
+	const float FreezeBarHeight = 16.0f;
+
+	// pCharacter contains the predicted character for local players or the last snap for players who are spectated
+	CCharacterCore *pCharacter = &GameClient()->m_aClients[ClientId].m_RegularPredicted;
+
+	// A QFr quad freezes just like a freeze tile does, but the server flags only the tiles, see
+	// CCharacter::m_InsideQuadFreeze
+	const bool IsInFreeze = pCharacter->m_IsInFreeze || GameClient()->m_aClients[ClientId].m_InsideQuadFreeze;
+
+	if(pCharacter->m_FreezeEnd <= 0 || pCharacter->m_FreezeStart == 0 || pCharacter->m_FreezeEnd <= pCharacter->m_FreezeStart || !GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo || (IsInFreeze && g_Config.m_ClFreezeBarsAlphaInsideFreeze == 0))
 	{
 		return;
 	}
@@ -42,18 +101,20 @@ void CFreezeBars::RenderFreezeBar(const int ClientId)
 
 	vec2 Position = GameClient()->m_aClients[ClientId].m_RenderPos;
 	Position.x -= FreezeBarHalfWidth;
-	Position.y += 32;
+	Position.y += 22.0f;
 
-	float Alpha = GameClient()->IsOtherTeam(ClientId) ? g_Config.m_ClShowOthersAlpha / 100.0f : 1.0f;
-	if(pCharacter->m_IsInFreeze)
+	float Alpha = GameClient()->TeeRenderAlpha(ClientId); // EClient
+	if(IsInFreeze)
 	{
 		Alpha *= g_Config.m_ClFreezeBarsAlphaInsideFreeze / 100.0f;
 	}
 
-	RenderFreezeBarPos(Position.x, Position.y, FreezeBarWidth, FreezeBarHeight, FreezeProgress, Alpha);
+	const ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f, Alpha);
+
+	RenderFreezeBarPos(Position.x, Position.y, FreezeBarWidth, FreezeBarHeight, FreezeProgress, Color);
 }
 
-void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, const float Height, float Progress, const float Alpha)
+void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, const float Height, float Progress, ColorRGBA Color)
 {
 	Progress = std::clamp(Progress, 0.0f, 1.0f);
 
@@ -73,7 +134,7 @@ void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, 
 	const float MiddleProgressProportion = MiddleBarWidth / ProgressBarWidth;
 
 	// beginning piece
-	float BeginningPieceProgress = 1;
+	float BeginningPieceProgress = 1.0f;
 	if(Progress <= EndProgressProportion)
 	{
 		BeginningPieceProgress = Progress / EndProgressProportion;
@@ -83,9 +144,9 @@ void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, 
 	Graphics()->WrapClamp();
 	Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudFreezeBarFullLeft);
 	Graphics()->QuadsBegin();
-	Graphics()->SetColor(1.f, 1.f, 1.f, Alpha);
+	Graphics()->SetColor(Color);
 	// Subset: top_l, top_m, btm_m, btm_l
-	Graphics()->QuadsSetSubsetFree(0, 0, RestPct + ProgPct * BeginningPieceProgress, 0, RestPct + ProgPct * BeginningPieceProgress, 1, 0, 1);
+	Graphics()->QuadsSetSubsetFree(0.0f, 0.0f, RestPct + ProgPct * BeginningPieceProgress, 0.0f, RestPct + ProgPct * BeginningPieceProgress, 1.0f, 0.0f, 1.0f);
 	IGraphics::CQuadItem QuadFullBeginning(x, y, EndRestWidth + EndProgressWidth * BeginningPieceProgress, BarHeight);
 	Graphics()->QuadsDrawTL(&QuadFullBeginning, 1);
 	Graphics()->QuadsEnd();
@@ -95,9 +156,9 @@ void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, 
 	{
 		Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudFreezeBarEmptyRight);
 		Graphics()->QuadsBegin();
-		Graphics()->SetColor(1.f, 1.f, 1.f, Alpha);
+		Graphics()->SetColor(Color);
 		// Subset: top_m, top_l, btm_l, btm_m | it is mirrored on the horizontal axe and rotated 180 degrees
-		Graphics()->QuadsSetSubsetFree(ProgPct - ProgPct * BeginningPieceProgress, 0, 0, 0, 0, 1, ProgPct - ProgPct * BeginningPieceProgress, 1);
+		Graphics()->QuadsSetSubsetFree(ProgPct - ProgPct * BeginningPieceProgress, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, ProgPct - ProgPct * BeginningPieceProgress, 1);
 		IGraphics::CQuadItem QuadEmptyBeginning(x + EndRestWidth + EndProgressWidth * BeginningPieceProgress, y, EndProgressWidth * (1.0f - BeginningPieceProgress), BarHeight);
 		Graphics()->QuadsDrawTL(&QuadEmptyBeginning, 1);
 		Graphics()->QuadsEnd();
@@ -106,12 +167,12 @@ void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, 
 	// middle piece
 	x += EndWidth;
 
-	float MiddlePieceProgress = 1;
+	float MiddlePieceProgress = 1.0f;
 	if(Progress <= EndProgressProportion + MiddleProgressProportion)
 	{
 		if(Progress <= EndProgressProportion)
 		{
-			MiddlePieceProgress = 0;
+			MiddlePieceProgress = 0.0f;
 		}
 		else
 		{
@@ -125,18 +186,18 @@ void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, 
 	// full freeze bar
 	Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudFreezeBarFull);
 	Graphics()->QuadsBegin();
-	Graphics()->SetColor(1.f, 1.f, 1.f, Alpha);
+	Graphics()->SetColor(Color);
 	// select the middle portion of the sprite so we don't get edge bleeding
 	if(FullMiddleBarWidth <= EndWidth)
 	{
 		// prevent pixel puree, select only a small slice
 		// Subset: top_l, top_m, btm_m, btm_l
-		Graphics()->QuadsSetSubsetFree(0, 0, FullMiddleBarWidth / EndWidth, 0, FullMiddleBarWidth / EndWidth, 1, 0, 1);
+		Graphics()->QuadsSetSubsetFree(0.0f, 0.0f, FullMiddleBarWidth / EndWidth, 0.0f, FullMiddleBarWidth / EndWidth, 1.0f, 0.0f, 1.0f);
 	}
 	else
 	{
 		// Subset: top_l, top_r, btm_r, btm_l
-		Graphics()->QuadsSetSubsetFree(0, 0, 1, 0, 1, 1, 0, 1);
+		Graphics()->QuadsSetSubsetFree(0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1);
 	}
 	IGraphics::CQuadItem QuadFull(x, y, FullMiddleBarWidth, BarHeight);
 	Graphics()->QuadsDrawTL(&QuadFull, 1);
@@ -145,18 +206,18 @@ void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, 
 	// empty freeze bar
 	Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudFreezeBarEmpty);
 	Graphics()->QuadsBegin();
-	Graphics()->SetColor(1.f, 1.f, 1.f, Alpha);
+	Graphics()->SetColor(Color);
 	// select the middle portion of the sprite so we don't get edge bleeding
 	if(EmptyMiddleBarWidth <= EndWidth)
 	{
 		// prevent pixel puree, select only a small slice
 		// Subset: top_m, top_l, btm_l, btm_m | it is mirrored on the horizontal axe and rotated 180 degrees
-		Graphics()->QuadsSetSubsetFree(EmptyMiddleBarWidth / EndWidth, 0, 0, 0, 0, 1, EmptyMiddleBarWidth / EndWidth, 1);
+		Graphics()->QuadsSetSubsetFree(EmptyMiddleBarWidth / EndWidth, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, EmptyMiddleBarWidth / EndWidth, 1.0f);
 	}
 	else
 	{
 		// Subset: top_r, top_l, btm_l, btm_r | it is mirrored on the horizontal axe and rotated 180 degrees
-		Graphics()->QuadsSetSubsetFree(1, 0, 0, 0, 0, 1, 1, 1);
+		Graphics()->QuadsSetSubsetFree(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
 	}
 
 	IGraphics::CQuadItem QuadEmpty(x + FullMiddleBarWidth, y, EmptyMiddleBarWidth, BarHeight);
@@ -165,12 +226,12 @@ void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, 
 
 	// end piece
 	x += MiddleBarWidth;
-	float EndingPieceProgress = 1;
-	if(Progress <= 1)
+	float EndingPieceProgress = 1.0f;
+	if(Progress <= 1.0f)
 	{
 		if(Progress <= (EndProgressProportion + MiddleProgressProportion))
 		{
-			EndingPieceProgress = 0;
+			EndingPieceProgress = 0.0f;
 		}
 		else
 		{
@@ -182,9 +243,9 @@ void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, 
 		// full
 		Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudFreezeBarFullLeft);
 		Graphics()->QuadsBegin();
-		Graphics()->SetColor(1.f, 1.f, 1.f, Alpha);
+		Graphics()->SetColor(Color);
 		// Subset: top_r, top_m, btm_m, btm_r | it is mirrored on the horizontal axe and rotated 180 degrees
-		Graphics()->QuadsSetSubsetFree(1, 0, 1.0f - ProgPct * EndingPieceProgress, 0, 1.0f - ProgPct * EndingPieceProgress, 1, 1, 1);
+		Graphics()->QuadsSetSubsetFree(1.0f, 0.0f, 1.0f - ProgPct * EndingPieceProgress, 0.0f, 1.0f - ProgPct * EndingPieceProgress, 1.0f, 1.0f, 1.0f);
 		IGraphics::CQuadItem QuadFullEnding(x, y, EndProgressWidth * EndingPieceProgress, BarHeight);
 		Graphics()->QuadsDrawTL(&QuadFullEnding, 1);
 		Graphics()->QuadsEnd();
@@ -192,15 +253,15 @@ void CFreezeBars::RenderFreezeBarPos(float x, const float y, const float Width, 
 	// empty
 	Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudFreezeBarEmptyRight);
 	Graphics()->QuadsBegin();
-	Graphics()->SetColor(1.f, 1.f, 1.f, Alpha);
+	Graphics()->SetColor(Color);
 	// Subset: top_m, top_r, btm_r, btm_m
-	Graphics()->QuadsSetSubsetFree(ProgPct - ProgPct * (1.0f - EndingPieceProgress), 0, 1, 0, 1, 1, ProgPct - ProgPct * (1.0f - EndingPieceProgress), 1);
+	Graphics()->QuadsSetSubsetFree(ProgPct - ProgPct * (1.0f - EndingPieceProgress), 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, ProgPct - ProgPct * (1.0f - EndingPieceProgress), 1.0f);
 	IGraphics::CQuadItem QuadEmptyEnding(x + EndProgressWidth * EndingPieceProgress, y, EndProgressWidth * (1.0f - EndingPieceProgress) + EndRestWidth, BarHeight);
 	Graphics()->QuadsDrawTL(&QuadEmptyEnding, 1);
 	Graphics()->QuadsEnd();
 
-	Graphics()->QuadsSetSubset(0, 0, 1, 1);
-	Graphics()->SetColor(1.f, 1.f, 1.f, 1.f);
+	Graphics()->QuadsSetSubset(0.0f, 0.0f, 1.0f, 1.0f);
+	Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
 	Graphics()->WrapNormal();
 }
 
@@ -213,13 +274,21 @@ inline bool CFreezeBars::IsPlayerInfoAvailable(int ClientId) const
 
 void CFreezeBars::OnRender()
 {
+	// EClient: everything below describes the tee being played, which while practicing is the
+	// practice one. Wrapped rather than taught about it, so the code itself is untouched.
+	CLocalPractice::CScope PracticeScope(&GameClient()->m_LocalPractice);
+
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 		return;
 
-	if(!g_Config.m_ClShowFreezeBars)
-	{
+	bool RenderingKillBar = false;
+
+	if(g_Config.m_ClFreezeKillWaitMs && RenderKillBar())
+		RenderingKillBar = true;
+
+	if(!g_Config.m_ClShowFreezeBars && !g_Config.m_ClFreezeKill)
 		return;
-	}
+
 	// get screen edges to avoid rendering offscreen
 	CScreenRect ScreenRect = Graphics()->GetScreen();
 	// expand the edges to prevent popping in/out onscreen
@@ -239,7 +308,7 @@ void CFreezeBars::OnRender()
 			continue;
 		}
 
-		//don't render if the tee is offscreen
+		// don't render if the tee is offscreen
 		if(!ScreenRect.Inside(GameClient()->m_aClients[ClientId].m_RenderPos))
 		{
 			continue;
@@ -249,6 +318,7 @@ void CFreezeBars::OnRender()
 	}
 	if(LocalClientId != -1 && IsPlayerInfoAvailable(LocalClientId))
 	{
-		RenderFreezeBar(LocalClientId);
+		if(!RenderingKillBar)
+			RenderFreezeBar(LocalClientId);
 	}
 }

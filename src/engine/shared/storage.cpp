@@ -118,6 +118,9 @@ public:
 		for(const char *pDir : COMMON_DIRS)
 			Success &= CreateFolder(pDir, TYPE_SAVE);
 
+		Success &= CreateFolder("entity", TYPE_SAVE);
+		Success &= CreateFolder("entity/mapconfigs", TYPE_SAVE);
+
 		if(!Success)
 		{
 			log_error("storage", "failed to create default folders in the user directory");
@@ -633,7 +636,6 @@ public:
 	bool RetrieveTimes(const char *pFilename, int Type, time_t *pCreated, time_t *pModified) override
 	{
 		dbg_assert(Type == TYPE_ABSOLUTE || (Type >= TYPE_SAVE && Type < m_NumPaths), "Type invalid");
-
 		char aBuffer[IO_MAX_PATH_LENGTH];
 		return fs_file_time(GetPath(Type, pFilename, aBuffer, sizeof(aBuffer)), pCreated, pModified) == 0;
 	}
@@ -863,7 +865,7 @@ public:
 
 	bool CreateFolder(const char *pFoldername, int Type) override
 	{
-		dbg_assert(Type >= TYPE_SAVE && Type < m_NumPaths, "Type invalid");
+		dbg_assert((Type >= TYPE_SAVE && Type < m_NumPaths) || Type == TYPE_ABSOLUTE, "Type invalid");
 
 		char aBuffer[IO_MAX_PATH_LENGTH];
 		GetPath(Type, pFoldername, aBuffer, sizeof(aBuffer));

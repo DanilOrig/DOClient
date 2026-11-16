@@ -11,6 +11,9 @@
 
 #include <engine/client.h>
 #include <engine/client/checksum.h>
+#if defined(CONF_ECLIENT_AUTOUPDATE)
+#include <engine/client/eclient_updater.h>
+#endif
 #include <engine/client/friends.h>
 #include <engine/client/ghost.h>
 #include <engine/client/serverbrowser.h>
@@ -86,6 +89,9 @@ class CClient : public IClient, public CDemoPlayer::IListener
 	CGhostLoader m_GhostLoader;
 	CServerBrowser m_ServerBrowser;
 	CUpdater m_Updater;
+#if defined(CONF_ECLIENT_AUTOUPDATE)
+	CEClientUpdater m_EClientUpdater;
+#endif
 	CFriends m_Friends;
 	CFriends m_Foes;
 
@@ -135,6 +141,8 @@ class CClient : public IClient, public CDemoPlayer::IListener
 	bool m_aDidPostConnect[NUM_DUMMIES] = {false, false};
 	bool m_GenerateTimeoutSeed = true;
 
+	bool m_aInfoDisplay[NUM_DUMMIES] = {false, false};
+
 	char m_aCmdConnect[256] = "";
 	char m_aCmdPlayDemo[IO_MAX_PATH_LENGTH] = "";
 	char m_aCmdEditMap[IO_MAX_PATH_LENGTH] = "";
@@ -165,7 +173,6 @@ class CClient : public IClient, public CDemoPlayer::IListener
 
 	EInfoState m_InfoState = EInfoState::ERROR;
 	std::shared_ptr<IHttpRequest> m_pDDNetInfoTask = nullptr;
-	std::shared_ptr<IHttpRequest> m_pCustomCommunitiesTask = nullptr;
 
 	// time
 	CSmoothTime m_aGameTime[NUM_DUMMIES];
@@ -189,6 +196,7 @@ class CClient : public IClient, public CDemoPlayer::IListener
 	float m_LastDummyConnectTime = 0.0f;
 	bool m_DummyReconnectOnReload = false;
 	bool m_DummyDeactivateOnReconnect = false;
+	bool m_DummyStayOnMain = false; // EClient
 #if defined(CONF_PLATFORM_IOS)
 	bool m_DummyReconnectOnResume = false;
 #endif
@@ -294,6 +302,9 @@ public:
 	IStorage *Storage() { return m_pStorage; }
 	IEngineTextRender *TextRender() { return m_pTextRender; }
 	IUpdater *Updater() { return m_pUpdater; }
+#if defined(CONF_ECLIENT_AUTOUPDATE)
+	CEClientUpdater *EClientUpdater() { return &m_EClientUpdater; }
+#endif
 	IHttp *Http() { return m_pHttp; }
 
 	CClient();
@@ -362,6 +373,7 @@ public:
 	CSnapItem SnapGetItem(int SnapId, int Index) const override;
 	int GetPredictionTick() override;
 	const void *SnapFindItem(int SnapId, int Type, int Id) const override;
+	const void *SnapFindItem(int Conn, int SnapId, int Type, int Id) const override;
 	int SnapNumItems(int SnapId) const override;
 	void SnapSetStaticsize(int ItemType, int Size) override;
 	void SnapSetStaticsize7(int ItemType, int Size) override;
@@ -400,8 +412,6 @@ public:
 	void RequestDDNetInfo() override;
 	void ResetDDNetInfoTask();
 	void LoadDDNetInfo();
-	void RequestCustomCommunities();
-	void ResetCustomCommunitiesTask();
 
 	bool IsSixup() const override { return m_Sixup; }
 
@@ -536,6 +546,7 @@ public:
 
 	IFriends *Foes() override { return &m_Foes; }
 
+	void GetSmoothFreezeTick(int *pSmoothTick, float *pSmoothIntraTick, float MixAmount) override;
 	void GetSmoothTick(int *pSmoothTick, float *pSmoothIntraTick, float MixAmount) override;
 
 	void AddWarning(const SWarning &Warning) override;
@@ -556,6 +567,21 @@ public:
 	std::optional<int> ShowMessageBox(const IGraphics::CMessageBox &MessageBox) override;
 	void GetGpuInfoString(char (&aGpuInfo)[512]) override;
 	void SetLoggers(std::shared_ptr<ILogger> &&pFileLogger, std::shared_ptr<ILogger> &&pStdoutLogger);
+
+	// <E-Client
+private:
+	static void ConDiscordRPCUpdate(IConsole::IResult *pResult, void *pUserData);
+	bool m_aCodeRunAfterJoinConsole[NUM_DUMMIES] = {false, false};
+	bool m_aOnConnect[NUM_DUMMIES] = {false, false};
+
+	void SendqxdInfo(int Conn);
+	void SendSupportsCosmeticSnapInfo(int Conn);
+
+public:
+	void DiscordRPCUpdate() override;
+	void SendFastInputsInfo(int Conn) override;
+	void DummyConnectInBackground() override;
+	// EClient>
 };
 
 #endif

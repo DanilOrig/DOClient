@@ -9,8 +9,12 @@
 
 #include <generated/client_data.h>
 
+#include <game/client/prediction/quad_zones.h>
 #include <game/collision.h>
 #include <game/mapitems.h>
+
+#include <algorithm>
+#include <limits>
 
 // Character, "physical" player's part
 
@@ -263,6 +267,9 @@ void CCharacter::FireWeapon()
 	if(m_ReloadTimer != 0)
 		return;
 
+	if(m_Core.m_ActiveWeapon == -1)
+		return;
+
 	DoWeaponSwitch();
 	vec2 Direction = normalize(vec2(m_LatestInput.m_TargetX, m_LatestInput.m_TargetY));
 
@@ -501,7 +508,7 @@ void CCharacter::FireWeapon()
 
 void CCharacter::HandleWeapons()
 {
-	//ninja
+	// ninja
 	HandleNinja();
 	HandleJetpack();
 
@@ -749,9 +756,13 @@ void CCharacter::HandleSkippableTiles(int Index)
 
 					DiffAngle = SpeederAngle - TeeAngle;
 					SpeedLeft = MaxSpeed / 5.0f - std::cos(DiffAngle) * TeeSpeed;
-					if(absolute((int)SpeedLeft) > Force && SpeedLeft > 0.0000001f)
+					// A tee at rest takes its angle from atan(0/0), leaving SpeedLeft NaN, which
+					// converts to INT_MIN. That has no absolute value, so it does not exceed.
+					const int SpeedLeftInt = round_truncate(SpeedLeft);
+					const bool Exceeds = SpeedLeftInt != std::numeric_limits<int>::min() && absolute(SpeedLeftInt) > Force;
+					if(Exceeds && SpeedLeft > 0.0000001f)
 						TempVel += Direction * Force;
-					else if(absolute((int)SpeedLeft) > Force)
+					else if(Exceeds)
 						TempVel += Direction * -Force;
 					else
 						TempVel += Direction * SpeedLeft;
@@ -1092,6 +1103,250 @@ void CCharacter::HandleTuneLayer()
 	m_Core.m_Tuning = *GetTuning(GetOverriddenTuneZone());
 }
 
+// <FoxNet
+void CCharacter::QuadZonePush(const CQuadData &Quad, const std::vector<CQuadData> &vQuads, vec2 QuadMotion, bool GivesDj)
+{
+	const float Radius = m_ProximityRadius * 0.55f;
+	const vec2 Pos = m_Pos;
+
+	const vec2 *pPoints = Quad.m_aPoints;
+	const vec2 aA[4] = {pPoints[0], pPoints[1], pPoints[2], pPoints[3]};
+	const vec2 aB[4] = {pPoints[1], pPoints[2], pPoints[3], pPoints[0]};
+
+	bool Buried = true;
+	for(int i = 0; i < 4; i++)
+	{
+		const vec2 Edge = aB[i] - aA[i];
+		if(dot(Edge, Edge) <= 1e-6f)
+			continue;
+
+		if(dot(Pos - aA[i], normalize(vec2(-Edge.y, Edge.x))) < 0.0f)
+		{
+			Buried = false;
+			break;
+		}
+	}
+
+	// Only a quad overlapping this one can hide one of its edges, and that is a handful of the layer
+	std::vector<const CQuadData *> vpNeighbours;
+	for(const CQuadData &Other : vQuads)
+	{
+		if(&Other == &Quad)
+			continue;
+		if(Other.m_AabbMax.x < Quad.m_AabbMin.x || Other.m_AabbMin.x > Quad.m_AabbMax.x)
+			continue;
+		if(Other.m_AabbMax.y < Quad.m_AabbMin.y || Other.m_AabbMin.y > Quad.m_AabbMax.y)
+			continue;
+		vpNeighbours.push_back(&Other);
+	}
+
+	const auto BuriedAt = [&](const vec2 &Point) {
+		for(const CQuadData *pOther : vpNeighbours)
+		{
+			if(pOther->Contains(Point))
+				return true;
+		}
+		return false;
+	};
+
+	const auto SeamEdge = [&](const vec2 &A, const vec2 &B, const vec2 &Outward) {
+		if(vpNeighbours.empty())
+			return false;
+		for(int Sample = 1; Sample <= 3; Sample++)
+		{
+			if(!BuriedAt(mix(A, B, Sample * 0.25f) + Outward))
+				return false;
+		}
+		return true;
+	};
+
+	vec2 PushDir = vec2(0.0f, 0.0f);
+	float PushDepth = 0.0f;
+	vec2 BestEdge = vec2(0.0f, 0.0f);
+	int BestEdgeIndex = -1;
+
+	if(Buried)
+	{
+		// Inside, the shallowest edge is the way out, and the seams are not ways out at all
+		float MinPenetration = std::numeric_limits<float>::infinity();
+		vec2 BestInwardNormal = vec2(0.0f, 0.0f);
+
+		for(int i = 0; i < 4; i++)
+		{
+			const vec2 Edge = aB[i] - aA[i];
+			if(dot(Edge, Edge) <= 1e-6f)
+				continue;
+
+			const vec2 InwardNormal = normalize(vec2(-Edge.y, Edge.x));
+
+			if(SeamEdge(aA[i], aB[i], -InwardNormal))
+				continue;
+
+			const float Penetration = dot(Pos - aA[i], InwardNormal) + Radius;
+			if(Penetration < MinPenetration)
+			{
+				MinPenetration = Penetration;
+				BestInwardNormal = InwardNormal;
+				BestEdge = Edge;
+				BestEdgeIndex = i;
+			}
+		}
+
+		if(BestEdgeIndex < 0 || MinPenetration <= 0.0f)
+			return;
+
+		PushDepth = MinPenetration;
+		PushDir = -BestInwardNormal;
+	}
+	else
+	{
+		float Nearest = std::numeric_limits<float>::max();
+		vec2 NearestPoint = vec2(0.0f, 0.0f);
+
+		for(int i = 0; i < 4; i++)
+		{
+			const vec2 Edge = aB[i] - aA[i];
+			const float Len2 = dot(Edge, Edge);
+			if(Len2 <= 1e-6f)
+				continue;
+
+			const vec2 Point = aA[i] + Edge * std::clamp(dot(Pos - aA[i], Edge) / Len2, 0.0f, 1.0f);
+			const float Dist = distance(Pos, Point);
+			if(Dist < Nearest)
+			{
+				Nearest = Dist;
+				NearestPoint = Point;
+				BestEdge = Edge;
+				BestEdgeIndex = i;
+			}
+		}
+
+		if(BestEdgeIndex < 0 || Nearest >= Radius)
+			return; // only the box around the entity ever reached this quad
+
+		const vec2 InwardNormal = normalize(vec2(-BestEdge.y, BestEdge.x));
+		if(BuriedAt(NearestPoint - InwardNormal))
+			return; // touching this quad through the neighbour that covers it
+
+		PushDepth = Radius - Nearest;
+		PushDir = Nearest > 0.0001f ? (Pos - NearestPoint) / Nearest : -InwardNormal;
+	}
+
+	const vec2 Mtv = PushDir * PushDepth;
+
+	const auto CanPlace = [&](const vec2 &Place) {
+		return !Collision()->TestBox(Place, vec2(m_ProximityRadius, m_ProximityRadius));
+	};
+
+	// Gives up as much of the push as it takes to stay out of the map, rather than all of it
+	const auto MoveAxis = [&](vec2 &Place, const vec2 &Delta) {
+		if(Delta.x == 0.0f && Delta.y == 0.0f)
+			return vec2(0.0f, 0.0f);
+
+		if(CanPlace(Place + Delta))
+		{
+			Place += Delta;
+			return Delta;
+		}
+
+		float Low = 0.0f;
+		float High = 1.0f;
+		for(int i = 0; i < 10; i++)
+		{
+			const float Mid = (Low + High) * 0.5f;
+			if(CanPlace(Place + Delta * Mid))
+				Low = Mid;
+			else
+				High = Mid;
+		}
+		if(Low > 0.0f)
+		{
+			const vec2 Applied = Delta * Low;
+			Place += Applied;
+			return Applied;
+		}
+		return vec2(0.0f, 0.0f);
+	};
+
+	vec2 NewPos = m_Pos;
+	const vec2 AppliedX = MoveAxis(NewPos, vec2(Mtv.x, 0.0f));
+	const vec2 AppliedY = MoveAxis(NewPos, vec2(0.0f, Mtv.y));
+
+	const vec2 Vel = m_Core.m_Vel;
+	m_Pos = NewPos;
+	m_Core.m_Pos = NewPos;
+
+	vec2 NewVel = Vel;
+
+	const vec2 SurfaceNormal = PushDir;
+	const float SurfaceSpeed = dot(QuadMotion, SurfaceNormal);
+	const float Target = std::max(SurfaceSpeed, 0.0f);
+	const float Along = dot(NewVel, SurfaceNormal);
+	if(Along < Target)
+		NewVel += SurfaceNormal * (Target - Along);
+
+	if(AppliedX.x == 0.0f && Mtv.x != 0.0f)
+		NewVel.x = 0.0f;
+	if(AppliedY.y == 0.0f && Mtv.y != 0.0f)
+		NewVel.y = 0.0f;
+
+	SetRawVelocity(NewVel);
+
+	m_Core.Quantize();
+	m_Pos = m_Core.m_Pos;
+
+	if(!GivesDj || BestEdgeIndex < 0)
+		return;
+
+	const float EdgeLength = length(BestEdge);
+	const float EdgeSlope = EdgeLength > 1e-6f ? absolute(BestEdge.y) / EdgeLength : 1.0f;
+	if(PushDir.y <= -0.35f && EdgeSlope <= 0.60f && AppliedY.y < 0.0f && Vel.y >= 0.0f)
+	{
+		m_Core.m_JumpedTotal = 0;
+		m_Core.m_Jumped = 0;
+	}
+}
+// FoxNet>
+
+void CCharacter::QuadZoneTick()
+{
+	CQuadZones *pQuadZones = GameWorld()->QuadZones();
+
+	m_InsideQuadFreeze = false;
+
+	if(!pQuadZones || !pQuadZones->Active() || !GameWorld()->m_WorldConfig.m_PredictDDRace)
+		return;
+
+	const int Tick = GameWorld()->GameTick();
+
+	if(!m_Core.m_IsInFreeze && !m_Core.m_DeepFrozen && !m_Core.m_LiveFrozen)
+	{
+		if(m_TileIndex != TILE_UNFREEZE && m_TileFIndex != TILE_UNFREEZE &&
+			pQuadZones->Inside(EPredictedZone::Freeze, m_Pos, Tick))
+		{
+			Freeze();
+			m_InsideQuadFreeze = true;
+		}
+
+		if((m_FreezeTime != 0 || m_InsideQuadFreeze) &&
+			pQuadZones->Inside(EPredictedZone::Unfreeze, m_Pos, Tick))
+		{
+			Unfreeze();
+			m_InsideQuadFreeze = false;
+		}
+	}
+
+	const vec2 Size = vec2(m_ProximityRadius, m_ProximityRadius) * 0.55f;
+	const std::vector<CQuadData> &vStopA = pQuadZones->Quads(EPredictedZone::StopA, Tick);
+	for(const CQuadData &Quad : vStopA)
+	{
+		const vec2 TestPos = m_Pos;
+		const vec2 QuadMotion = Quad.MotionAt(TestPos);
+		if(Quad.Overlaps(TestPos, Size))
+			QuadZonePush(Quad, vStopA, QuadMotion, pQuadZones->StopAGivesDj());
+	}
+}
+
 void CCharacter::DDRaceTick()
 {
 	mem_copy(&m_Input, &m_SavedInput, sizeof(m_Input));
@@ -1099,7 +1354,6 @@ void CCharacter::DDRaceTick()
 	{
 		m_Input.m_Direction = 0;
 		m_Input.m_Jump = 0;
-		//Hook and weapons are possible in live freeze
 	}
 	if(m_FreezeTime > 0)
 	{
@@ -1112,6 +1366,14 @@ void CCharacter::DDRaceTick()
 		}
 		if(m_FreezeTime == 1)
 			Unfreeze();
+
+		m_AliveAccumulation = std::min(m_AliveAccumulation - 1, 0);
+		m_AliveAccumulation = std::max(m_AliveAccumulation, -g_Config.m_EcUnfreezeLagDelayTicks);
+	}
+	else
+	{
+		m_AliveAccumulation = std::max(m_AliveAccumulation, 1);
+		m_AliveAccumulation = std::min(m_AliveAccumulation + 1, g_Config.m_EcUnfreezeLagDelayTicks);
 	}
 
 	HandleTuneLayer();
@@ -1196,6 +1458,11 @@ void CCharacter::DDRacePostCoreTick()
 	{
 		HandleTiles(CurrentIndex);
 	}
+
+	// <FoxNet
+	if(m_InsideQuadFreeze)
+		Freeze();
+	// FoxNet>
 }
 
 bool CCharacter::Freeze(int Seconds)
@@ -1374,6 +1641,7 @@ void CCharacter::ResetPrediction()
 	m_Core.m_LaserHitDisabled = false;
 	m_Core.m_EndlessJump = false;
 	m_Core.m_Jetpack = false;
+
 	m_NinjaJetpack = false;
 	m_Core.m_Jumps = 2;
 	m_Core.m_HookHitDisabled = false;
@@ -1596,6 +1864,26 @@ void CCharacter::Read(CNetObj_Character *pChar, CNetObj_DDNetCharacter *pExtende
 		}
 	}
 }
+
+// <EClient
+void CCharacter::RebaseTicks(int Delta)
+{
+	if(Delta == 0)
+		return;
+
+	// Everything here is a stamp rather than a duration, so it only means anything against the
+	// clock it was taken on. Durations, m_FreezeTime above all, are already clock independent and
+	// are deliberately left alone.
+	m_AttackTick += Delta;
+	m_LastWeaponSwitchTick += Delta;
+	m_LastTuneZoneTick += Delta;
+	m_Core.m_Ninja.m_ActivationTick += Delta;
+	if(m_Core.m_FreezeStart != 0)
+		m_Core.m_FreezeStart += Delta;
+	if(m_Core.m_FreezeEnd > 0)
+		m_Core.m_FreezeEnd += Delta;
+}
+// EClient>
 
 void CCharacter::SetCoreWorld(CGameWorld *pGameWorld)
 {

@@ -10,6 +10,7 @@ class CLaserData;
 class CLaser : public CEntity
 {
 	friend class CGameWorld;
+	friend class CPlayers; // DClient addition
 
 public:
 	CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, int Owner, int Type);

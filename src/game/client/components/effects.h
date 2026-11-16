@@ -3,9 +3,18 @@
 #ifndef GAME_CLIENT_COMPONENTS_EFFECTS_H
 #define GAME_CLIENT_COMPONENTS_EFFECTS_H
 
+#include <base/color.h>
 #include <base/vmath.h>
 
 #include <game/client/component.h>
+
+enum
+{
+	EFFECT_OFF = 0,
+	EFFECT_SPARKLE,
+	EFFECT_FIRETRAIL,
+	EFFECT_SWITCH
+};
 
 class CEffects : public CComponent
 {
@@ -20,6 +29,8 @@ private:
 	int64_t m_LastUpdate100hz = 0;
 
 	int64_t m_SkidSoundTimer = 0;
+
+	bool m_AddXhz;
 
 public:
 	CEffects();
@@ -40,6 +51,11 @@ public:
 	void FreezingFlakes(vec2 Pos, vec2 Size, float Alpha);
 	void SparkleTrail(vec2 Pos, float Alpha);
 	void Confetti(vec2 Pos, float Alpha);
+
+	// EClient
+	void FireTrailEffect(vec2 Pos, float Alpha = 1.0f);
+	void SwitchEffect(vec2 Pos, ColorRGBA Color, float Alpha = 1.0f);
+	void SparkleEffect(vec2 Pos, float Alpha = 1.0f);
 
 	void Update();
 };

@@ -1,0 +1,294 @@
+# Entity Client — список функций (по конфигам)
+
+Всего опций: 290
+
+- `ec_animate_wheel_time` — Duration of wheel animations, in milliseconds (0 == no animation, 1000 = 1 second)
+- `ec_anti_spawn_block` — Puts you in a team when you die and in team 0 when youre about to cross the start line
+- `ec_antiping_improved` — Different antiping smoothing algorithm, not compatible with cl_antiping_smooth
+- `ec_antiping_negative_buffer` — Helps in Gores. Allows internal certainty value to be negative which causes more conservative prediction
+- `ec_antiping_stable_direction` — Predicts optimistically along the tees stable axis to reduce delay in gaining overall stability
+- `ec_antiping_uncertainty_scale` — Determines uncertainty duration as a factor of ping, 100 = 1.0
+- `ec_auto_add_on_name_change` — Legacy war group auto-add setting for config migration
+- `ec_auto_dummy_connect` — Automatically connect your dummy on join | 1 = switch to dummy on connect | 2 = dont switch to dummy on connect
+- `ec_auto_join_team` — Joins that players team if they join one
+- `ec_auto_join_team_name` — Name of Player to Whisper Something When They Join
+- `ec_auto_join_test` — Auto Join Test
+- `ec_auto_notify_msg` — What to Auto Whisper Them
+- `ec_auto_notify_name` — Name of Player to Whisper Something When They Join
+- `ec_auto_notify_on_join` — Notifies you if a player joined
+- `ec_auto_reply_msg` — Message to reply when pinged in chat and ec_auto_reply is set to 1
+- `ec_auto_reply_muted_msg` — Message to reply with then a muted player pings you
+- `ec_bg_draw_auto_save_load` — Automatically save and load background drawings
+- `ec_bg_draw_fade_time` — Time until strokes disappear (0 = never)
+- `ec_bg_draw_max_items` — Maximum number of strokes
+- `ec_bg_draw_width` — Width of background draw strokes
+- `ec_chat_bubble_fadein` — how long it fades in
+- `ec_chat_bubble_fadeout` — How long it fades out
+- `ec_chat_bubble_showtime` — How long to show the bubble for
+- `ec_chat_bubble_size` — Size of the chat bubble
+- `ec_chat_bubbles` — Show Chatbubbles above players
+- `ec_chat_color_parsing` — Allows you to use &00-&99 to chang the color of your text, &x marks the end of the color
+- `ec_chat_friend_color` — Turns on colors in the spectate menu
+- `ec_chat_math` — Suggest the result of a math expression ending with '=' in the chat, press Tab to insert it
+- `ec_chatbubble` — Toggles Chatbubble on or Off
+- `ec_client_prefix` — Client (Echo) Message Prefix
+- `ec_client_side_map_finishes` — Whether to show map finishes saved on the client in the server browser
+- `ec_client_users_browser` — Whether to show a list of people using EClient in the server browser
+- `ec_client_users_online_info` — list entity client users in the 'onlineinfo' command
+- `ec_client_users_scoreboard` — Show entity client users in the scoreboard
+- `ec_color_frozen_tee_body` — Use skin colors for frozen tees
+- `ec_color_frozen_tee_darken` — Makes color of tees darker when in freeze (0-100)
+- `ec_color_frozen_tee_feet` — Also use color for frozen tee feet
+- `ec_cursor_opacity_spec` — Opacity of your cursor when spectating in freeview
+- `ec_cursor_size` — Cursor size in %
+- `ec_custom_communities_url` — URL to fetch custom communities from (must be https), empty to disable
+- `ec_custom_font` — Custom font face
+- `ec_decouple_mouse_sens` — Whether to decouple mouse sensitivity
+- `ec_discord_map_status` — Show What Map you're on
+- `ec_discord_normal_process_priority` — Set Discord process priority to normal
+- `ec_discord_offline_status` — discord Offline Status
+- `ec_discord_online_status` — discord Online Status
+- `ec_discord_rpc` — Toggle Discord Rpc (requires restart)
+- `ec_dismiss_adbots` — If an AdBot messages you it hides their message
+- `ec_do_afk_colors` — Makes Names Darker in Scoreboard if Player is afk
+- `ec_do_chat_client_prefix` — Toggles Client Prefix
+- `ec_do_chat_server_prefix` — Toggles Server Prefix
+- `ec_do_spec_prefix` — Toggles Spectator Prefix Next to Names
+- `ec_dyncam_zoom` — Scale dynamic camera follow distance with zoom
+- `ec_effect` — Show effect for own player
+- `ec_effect_colors` — Do Effect Color
+- `ec_effect_others` — Show effects for others
+- `ec_effect_speed` — How Fast The Particles Should Update
+- `ec_effect_speed_override` —  one after switching to a different effect
+- `ec_execute_on_connect` — Run a console command before connect
+- `ec_fast_input` — Uses input for prediction before the next tick
+- `ec_fast_input_amount` — How many milliseconds fast input will apply
+- `ec_fast_input_mode` — Fast input algorithm: 0 = classic, 1 = flux (normally caps other tees to one tick and waits for server pre-input)
+- `ec_fast_input_others` — Apply fast input to other tees
+- `ec_first_launch` — Show welcome message indicating the first launch of the client
+- `ec_flux_input_amount` — Flux prediction offset, in hundredths of a tick (100 = 1.00 ticks). Only used when ec_fast_input_mode is set to flux
+- `ec_flux_input_others_uncapped` — Apply the full Flux offset to other tees immediately, without waiting for server pre-input
+- `ec_force_seven_skin` — Whether to force rendering the 0.7 skin on any server for yourself
+- `ec_freeze_kill` — Kill if Frozen
+- `ec_freeze_kill_before_start` — Whether the feature works before having started the race
+- `ec_freeze_kill_debug` — debug
+- `ec_freeze_kill_full_frozen` — Only Starts Timer When Full Frozen
+- `ec_freeze_kill_ignore_kill_prot` — Ignore Kill protection when for auto freeze kill
+- `ec_freeze_kill_ms` — time to wait before you kill
+- `ec_freeze_kill_not_moving` — Distance a Teammate Can be Away
+- `ec_freeze_kill_team_in_view` — Dont Kill if a Teammate is in your zoom range 
+- `ec_freeze_kill_wait_ms` — Wait a Certain amount of time while frozen until you kill
+- `ec_friend_prefix` — Friend Prefix (alt + num3 = ♥)
+- `ec_frozen_katana` — Show katana on frozen players (reverts a DDNet change)
+- `ec_frozen_tees_hud` — Show frozen tee HUD
+- `ec_frozen_tees_hud_skins` — Use ninja skin, or darkened skin for frozen tees on hud
+- `ec_frozen_tees_max_rows` — Maximum number of rows in frozen tee HUD display
+- `ec_frozen_tees_only_inteam` — Only render frozen tee HUD display while in team
+- `ec_frozen_tees_size` — Size of tees in frozen tee hud. (Default : 15)
+- `ec_frozen_tees_text` — Show how many tees in your team are currently frozen. (0 - off, 1 - show alive, 2 - show frozen)
+- `ec_frozen_tees_use_warlist` — Filter the frozen tee HUD by selected war groups (-1 migrates old selections)
+- `ec_gores_mode` — Automatically switches to gun, when firing it switches to hammer and then back
+- `ec_gores_mode_auto_enable` — enables it on Gores gametype and disables on others
+- `ec_gores_mode_disable_weapons` — Disable Gores Mode When The Player Has Another Weapon
+- `ec_hide_frozen_ghosts` — Hide Ghosts of other players if they are frozen
+- `ec_hide_settings_tabs` — Bit flags to disable settings tabs
+- `ec_high_process_priority` — Set DDNets process priority to high
+- `ec_indicator_hide_afk` — Hides AFK players on the indicator
+- `ec_indicator_hide_on_screen` — Hides the Indicator if Tee is on Screen (might be a lil buggy on bigger/smaller monitors
+- `ec_indicator_inteam` — Only show indicator while in team
+- `ec_indicator_offset` — (16-128) Offset of indicator position
+- `ec_indicator_offset_max` — (16-128) Max indicator offset for variable offset setting
+- `ec_indicator_only_teammates` — Only shows teammates on the indicator
+- `ec_indicator_opacity` — Opacity of indicator circles
+- `ec_indicator_radius` — (1-16) indicator circle size
+- `ec_indicator_tees` — Show tees instead of circles
+- `ec_indicator_variable_distance` — Indicator circles will be further away the further the tee is
+- `ec_indicator_variable_max_distance` — Maximum tee distance for variable offset
+- `ec_info_url_type` — What Url info.cpp should use (0 = Github, 1 = entity)
+- `ec_inform_update` — Inform you if a new version of E-Client is available
+- `ec_last_notify` — Notify when you are last
+- `ec_last_notify_text` — Text for last notify
+- `ec_limit_mouse_to_screen` — Limit mouse to screen boundaries
+- `ec_local_practice_alert` — Show a notice when your real tee gets moved while practicing
+- `ec_local_practice_alert_time` — How many seconds the moved notice stays on screen
+- `ec_local_practice_exit_on_move` — Leave the practice world as soon as your real tee gets moved
+- `ec_local_practice_freeze_aim` — Keep the aim your real tee had when practice started instead of sending your live aim
+- `ec_local_practice_ghost` — Show your real tee on the server as a see-through ghost while practicing
+- `ec_local_practice_ghost_alpha` — Opacity of your real tee while practicing
+- `ec_local_practice_ghost_fade` — Fade the ghost out while it overlaps your practice tee
+- `ec_local_practice_kill_to_real` — Killing in the practice world puts you back at your real tee instead of at a spawn tile
+- `ec_map_overview` — Enable map overview
+- `ec_map_overview_opacity` — Opacity of the map overview
+- `ec_map_overview_spectating_only` — Enable map overview only when spectating
+- `ec_media_island` — Show media island
+- `ec_media_island_animation` — How fast the media island animation is (0 = disabled)
+- `ec_media_island_visualizer` — Show media island visualizer
+- `ec_media_island_visualizer_alignment` — 1 = align bottom | 2 = align center
+- `ec_media_island_visualizer_color_dynamic` — Enable dynamic color for media island visualizer
+- `ec_mouse_sens_x_ingame` — Mouse sensitivity for X axis when decoupled
+- `ec_mouse_sens_x_ui` — Mouse sensitivity for X axis when decoupled
+- `ec_mouse_sens_y_ingame` — Mouse sensitivity for Y axis when decoupled
+- `ec_mouse_sens_y_ui` — Mouse sensitivity for Y axis when decoupled
+- `ec_muted_console_color` — colors in console for warlist
+- `ec_nameplate_friend_color` — Whether to use friends name color as text color
+- `ec_nameplate_ping_circle` — Shows a circle next to nameplate to indicate ping
+- `ec_night_shift` — Warm the colors of the whole screen after dark
+- `ec_night_shift_from` — Minute of the day the custom night shift schedule turns on
+- `ec_night_shift_latitude` — Latitude in hundredths of a degree, used by the sunset to sunrise schedule
+- `ec_night_shift_longitude` — Longitude in hundredths of a degree, used by the sunset to sunrise schedule
+- `ec_night_shift_schedule` — When night shift is active (0 = always, 1 = custom hours, 2 = sunset to sunrise)
+- `ec_night_shift_temperature` — Color temperature night shift warms the screen to, in kelvin (lower is warmer)
+- `ec_night_shift_to` — Minute of the day the custom night shift schedule turns off
+- `ec_night_shift_transition` — How many minutes night shift takes to fade in and out
+- `ec_notify_on_move` — Notifies you when your player moves
+- `ec_outline` — Draws outlines
+- `ec_outline_freeze` — Draws outline around freeze and deep
+- `ec_outline_in_entities` — Only show outlines in entities
+- `ec_outline_kill` — Draws outline around kill
+- `ec_outline_solid` — Draws outline around hook and unhook
+- `ec_outline_tele` — Draws outline around teleporters
+- `ec_outline_unfreeze` — Draws outline around unfreeze and undeep
+- `ec_outline_width_freeze` — (1-16) Width of freeze outline
+- `ec_outline_width_kill` — (1-16) Width of kill outline
+- `ec_outline_width_solid` — (1-16) Width of solid outline
+- `ec_outline_width_tele` — (1-16) Width of tele outline
+- `ec_outline_width_unfreeze` — (1-16) Width of unfreeze outline
+- `ec_own_tee_custom_color` — Renders your own skin differently for yourself
+- `ec_own_tee_skin` — Renders your own skin differently for yourself
+- `ec_own_tee_skin_name` — Own Tee Skin Name
+- `ec_physic_balls_kill_border` — Whether the kill border kills balls
+- `ec_physic_balls_skin` — Base skin for physic balls
+- `ec_player_indicator` — Show radial indicator of other tees
+- `ec_player_indicator_freeze` — Only show frozen tees in indicator
+- `ec_pred_ghosts_alpha` — Alpha of predicted ghosts (0-100)
+- `ec_pred_margin_in_freeze` — Enable changing prediction margin while frozen
+- `ec_pred_margin_in_freeze_amount` — Set what your prediction margin while frozen should be
+- `ec_predict_moving_tiles` — Predict the moving tiles that have a predictable outcome on FoxNet servers (freeze, unfreeze and stoppers)
+- `ec_prediction_margin_smooth` — Makes prediction margin transition smooth, causes worse ping jitter adjustment (reverts a ddnet change)
+- `ec_profile_clan` — Apply clan in profiles
+- `ec_profile_colors` — Apply colors in profiles
+- `ec_profile_emote` — Apply emote in profiles
+- `ec_profile_flag` — Apply flag in profiles
+- `ec_profile_name` — Apply name in profiles
+- `ec_profile_overwrite_clan_with_empty` — Overwrite clan name even if profile has an empty clan name
+- `ec_profile_skin` — Apply skin in profiles
+- `ec_rainbow_hook` — Rainbow hook
+- `ec_rainbow_mode` — Rainbow mode (1: rainbow, 2: pulse, 3: darkness, 4: random)
+- `ec_rainbow_others` — Turn on rainbow client side for others
+- `ec_rainbow_speed` — Rainbow speed as a percentage (50 = half speed, 200 = double speed)
+- `ec_rainbow_tees` — Turn on rainbow client side
+- `ec_rainbow_weapon` — Rainbow Weapons
+- `ec_remove_anti` — Removes some amount of antiping & player prediction in freeze
+- `ec_remove_anti_delay_ticks` — How many ticks it takes to remove the maximum prediction after being frozen
+- `ec_remove_anti_ticks` — The biggest amount of prediction ticks that are removed
+- `ec_render_ghost_as_circle` — Render Ghosts as circles instead of tee
+- `ec_render_weapons_in_freeze` — Renders players' weapons while frozen
+- `ec_reply_muted` — replies to muted players if they ping you
+- `ec_reset_bindwheel_mouse` — Reset position of mouse when opening bindwheel
+- `ec_reset_playeraction_mouse` — Reset position of mouse when opening the player actions menu
+- `ec_revert_door_design` — 
+- `ec_revert_team_colors` — 
+- `ec_run_on_join_console` — What it should run inside of the Console
+- `ec_run_on_join_delay` — Tick Delay before using run on join
+- `ec_scale_mouse_distance` — Improve mouse precision by scaling max distance to 1000
+- `ec_scoreboard_friend_color` — Whether to use friends name color as text color
+- `ec_scoreboard_outline_teams` — outline teams in scoreboard
+- `ec_send_dots_chat` — Never send a message if it starts with a '.'
+- `ec_send_exclamation_mark` — 
+- `ec_send_menu_flag` — Whether to send the in settings flag to the server or not
+- `ec_server_prefix` — Server Message Prefix
+- `ec_server_rainbow` — Enables Rainbow Mode Server Side! (Way Slower though)
+- `ec_show_ids_chat` — Whether to Show Client IDs in Chat
+- `ec_show_local_time_seconds` — Show local time in seconds
+- `ec_show_moving_tiles_entities` — Show server-side moving tiles in entities | 1 = map design | 2 = use entities color | 3 = map design with entities color
+- `ec_show_others_ghosts` — Show ghosts for other players in their unpredicted position
+- `ec_show_others_in_menu` — Shows The Settings Emote if Someones in The Menu
+- `ec_showhud_player_checkpoint` — Show ingame HUD (Player Checkpoint)
+- `ec_showhud_player_compact` — Player Hud compact version
+- `ec_showhud_timer_started_flag` — Whether to show a flag if the timer has started
+- `ec_silent_messages` — When sending a Silent Message to the chat it will still show what you typed
+- `ec_small_skins` — Small tees
+- `ec_spec_prefix` — Spectating Prefix (alt + num7 = •)
+- `ec_specmenu_friend_color` — Turns on colors in the spectate menu
+- `ec_specmenu_prefixes` — Legacy war group setting for config migration
+- `ec_specradio_show_delay` — How long it takes until the spectator radio shows up fully, its usable before it shows up
+- `ec_statistics_show_fps` — Whether to show FPS in the statistics
+- `ec_statistics_show_ping` — Whether to show Ping in the statistics
+- `ec_statistics_show_snap_rate` — Whether to show Snap Rate in the statistics
+- `ec_statusbar` — Enable status bar
+- `ec_statusbar_12_hour_clock` — Use 12 hour clock in local time
+- `ec_statusbar_alpha` — Status bar background alpha
+- `ec_statusbar_height` — Height of the status bar
+- `ec_statusbar_labels` — Show labels on status bar entries
+- `ec_statusbar_local_time_seconds` — Show seconds in local time
+- `ec_statusbar_scheme` — The order in which to show status bar items
+- `ec_statusbar_text_alpha` — Status bar text alpha
+- `ec_strong_weak_color_id` — Render ClientIds in Nameplate Same Color as Strong/Weak Hook Color
+- `ec_swap_ghosts` — Show predicted players as ghost and normal players as unpredicted
+- `ec_sweat_mode` — sweat mode
+- `ec_sweat_mode_only_others` — Only applies the skin to other players
+- `ec_sweat_mode_self_color` — whether to change your own color when sweatmode is turned on
+- `ec_sweat_mode_skin_name` — What Skin Everyone Should Have (leave empty to not change)
+- `ec_tabbed_out_msg` — Let others know when pinged in chat that you are tabbed out
+- `ec_tee_trail` — Enable Tee trails
+- `ec_tee_trail_alpha` — Tee trail alpha
+- `ec_tee_trail_color_mode` — Tee trail color mode (1: Solid color, 2: Current Tee color, 3: Rainbow, 4: Color based on Tee speed, 5: Random)
+- `ec_tee_trail_fade` — Fade trail alpha over length
+- `ec_tee_trail_length` — Tee trail length
+- `ec_tee_trail_others` — Show tee trails for other players
+- `ec_tee_trail_taper` — Taper tee trail over length
+- `ec_tee_trail_width` — Tee trail width
+- `ec_translate_auto` — Automatically translate messages, only some backends support this (DeepL requires an api key)
+- `ec_translate_backend` — Translate backend (1 = LibreTranslate, 2 = DeepL, 3 = Google Translate, 0 = default)
+- `ec_translate_endpoint` — For backends which need it, endpoint to use (must be https, DeepL Pro is https://api.deepl.com/v2/translate)
+- `ec_translate_key` — For backends which need it, api key to use
+- `ec_translate_language_blacklist` — comma seperated languages that get ignored while translating (e.g. 'en,de,ru'
+- `ec_translate_language_whitelist` — comma seperated languages that get translated, if not in this list, ignored (e.g. 'en,de,ru')
+- `ec_translate_log_errors` — Log translation errors
+- `ec_translate_min_interval` — Minimum time in milliseconds between translate requests, -1 uses the default of the backend (Google 1500)
+- `ec_translate_target` — Translate target language (must be 2 character ISO 639 code)
+- `ec_ui_mouse_border_teleport` — Teleport Mouse from one border to the other if it goes off screen
+- `ec_unpred_ghosts_alpha` — Alpha of unpredicted ghosts (0-100)
+- `ec_unpred_others_in_freeze` — Dont predict other players if you are frozen
+- `ec_unread_news` — Whether there is unread news
+- `ec_use_ui_color_offline` — Whether to use the ui_color while not ingame
+- `ec_volleyball_better_ball` — Make frozen players in volleyball look more like volleyballs (0 = disabled, 1 = in volleyball maps, 2 = always)
+- `ec_volleyball_better_ball_skin` — Player skin to use for better volleyball ball
+- `ec_volleyball_spin_speed` — How fast the volleyball spins
+- `ec_warlist` — Toggles war list visuals
+- `ec_warlist_allow_duplicates` — Allow duplicate war entries
+- `ec_warlist_auto_add_flags` — Legacy war group setting for config migration
+- `ec_warlist_browser` — Whether to show online warlist players in the server browser or not
+- `ec_warlist_browser_flags` — Legacy war group setting for config migration
+- `ec_warlist_chat` — Legacy war group setting for config migration
+- `ec_warlist_color_join_leave` — Legacy war group setting for config migration
+- `ec_warlist_frozen_tee_flags` — Legacy war group setting for config migration
+- `ec_warlist_indicator` — Use warlist for indicator
+- `ec_warlist_indicator_all` — Show all groups
+- `ec_warlist_indicator_colors` — Show warlist colors instead of freeze colors
+- `ec_warlist_indicator_enemy` — Show players from the first group
+- `ec_warlist_indicator_team` — Show players from second group
+- `ec_warlist_prefix` — Legacy war group prefix for config migration
+- `ec_warlist_prefixes` — Legacy war group setting for config migration
+- `ec_warlist_prefixes_server_info` — Legacy war group setting for config migration
+- `ec_warlist_reason` — Legacy war group setting for config migration
+- `ec_warlist_scoreboard` — Legacy war group setting for config migration
+- `ec_warlist_show_clan_if_war` — Legacy war group setting for config migration
+- `ec_warlist_specmenu` — Legacy war group setting for config migration
+- `ec_warlist_swap_name_reason` — Legacy war group setting for config migration
+- `ec_webhook_url` — URL to use with webhook (remember to enable http_allow_insecure for http)
+- `ec_white_feet` — Render feet as ec_white_feet_skin and fully white | 1 = own| 2 = others | 3 = all
+- `ec_white_feet_skin` — Base skin for white feet
+- `saved_clan` — Saved to restore for !restore
+- `saved_country` — Saved to restore for !restore
+- `saved_dummy_clan` — Saved to restore for !restore
+- `saved_dummy_country` — Saved to restore for !restore
+- `saved_dummy_name` — Saved to restore for !restore
+- `saved_dummy_skin` — Saved to restore for !restore
+- `saved_dummy_use_custom_color` — Saved to restore for !restore
+- `saved_name` — Saved to restore for !restore
+- `saved_player_skin` — Saved to restore for !restore
+- `saved_player_use_custom_color` — Saved to restore for !restore
+- `snd_friend_chat` — 
+- `sv_moving_tiles` — Whether to use moving tiles using quads or not
+- `sv_tele_grenade` — Whether to use tele grenade

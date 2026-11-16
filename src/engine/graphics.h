@@ -35,7 +35,7 @@ struct SBufferContainerInfo
 		bool m_Normalized;
 		void *m_pOffset;
 
-		//0: float, 1:integer
+		// 0: float, 1:integer
 		unsigned int m_FuncType;
 	};
 	std::vector<SAttribute> m_vAttributes;
@@ -103,7 +103,7 @@ struct GL_STexCoord3D
 };
 
 typedef ColorRGBA GL_SColorf;
-//use normalized color values
+// use normalized color values
 typedef vector4_base<unsigned char> GL_SColor;
 
 struct GL_SVertex
@@ -340,6 +340,7 @@ public:
 	virtual void BlendNone() = 0;
 	virtual void BlendNormal() = 0;
 	virtual void BlendAdditive() = 0;
+	virtual void BlendMultiply() = 0;
 	virtual void WrapNormal() = 0;
 	virtual void WrapClamp() = 0;
 
@@ -528,11 +529,19 @@ public:
 
 	enum
 	{
-		CORNER_NONE = 0,
-		CORNER_TL = 1,
-		CORNER_TR = 2,
-		CORNER_BL = 4,
-		CORNER_BR = 8,
+		// EClient
+		SIDE_T = 1 << 0,
+		SIDE_R = 1 << 1,
+		SIDE_B = 1 << 2,
+		SIDE_L = 1 << 3,
+		SIDE_ALL = SIDE_T | SIDE_R | SIDE_B | SIDE_L,
+		//
+
+		CORNER_NONE = 1 << 0,
+		CORNER_TL = 1 << 1,
+		CORNER_TR = 1 << 2,
+		CORNER_BL = 1 << 3,
+		CORNER_BR = 1 << 4,
 
 		CORNER_T = CORNER_TL | CORNER_TR,
 		CORNER_B = CORNER_BL | CORNER_BR,
@@ -545,6 +554,7 @@ public:
 	virtual void DrawRectExt4(float x, float y, float w, float h, ColorRGBA ColorTopLeft, ColorRGBA ColorTopRight, ColorRGBA ColorBottomLeft, ColorRGBA ColorBottomRight, float r, int Corners) = 0;
 	virtual int CreateRectQuadContainer(float x, float y, float w, float h, float r, int Corners) = 0;
 	virtual void DrawRect(float x, float y, float w, float h, ColorRGBA Color, int Corners, float Rounding) = 0;
+	virtual void DrawRectOutline(float x, float y, float w, float h, ColorRGBA Color, int Corners, int Sides, float Rounding) = 0;
 	virtual void DrawRect4(float x, float y, float w, float h, ColorRGBA ColorTopLeft, ColorRGBA ColorTopRight, ColorRGBA ColorBottomLeft, ColorRGBA ColorBottomRight, int Corners, float Rounding) = 0;
 	virtual void DrawCircle(float CenterX, float CenterY, float Radius, int Segments) = 0;
 

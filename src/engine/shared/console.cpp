@@ -21,6 +21,7 @@
 #include <engine/storage.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator> // std::size
 #include <new>
 
@@ -73,6 +74,13 @@ int CConsole::CResult::GetInteger(unsigned Index) const
 		return 0;
 	int Out;
 	return str_toint(m_apArgs[Index], &Out) ? Out : 0;
+}
+
+int64_t CConsole::CResult::GetInteger64(unsigned Index) const
+{
+	if(Index >= m_NumArgs)
+		return 0;
+	return str_toint64_base(m_apArgs[Index]);
 }
 
 float CConsole::CResult::GetFloat(unsigned Index) const
@@ -753,7 +761,10 @@ bool CConsole::ExecuteFile(const char *pFilename, int ClientId, bool LogFailure,
 			return false;
 	}
 	if(!m_pStorage)
+	{
+		log_error("console", "Storage is not initialized");
 		return false;
+	}
 
 	// push this one to the stack
 	CExecFile ThisFile;
@@ -771,6 +782,7 @@ bool CConsole::ExecuteFile(const char *pFilename, int ClientId, bool LogFailure,
 
 		while(const char *pLine = LineReader.Get())
 		{
+			// EClient
 			ExecuteLine(pLine, ClientId);
 		}
 
@@ -1029,6 +1041,30 @@ void CConsole::Register(const char *pName, const char *pParams,
 
 	if(pCommand->m_Flags & CFGFLAG_CHAT)
 		pCommand->SetAccessLevel(EAccessLevel::USER);
+}
+
+void CConsole::Deregister(const char *pName)
+{
+	CCommand *pCommand = FindCommand(pName, m_FlagMask);
+	if(pCommand)
+	{
+		// remove from list
+		if(m_pFirstCommand == pCommand)
+			m_pFirstCommand = pCommand->Next();
+		else
+		{
+			for(CCommand *p = m_pFirstCommand; p; p = p->Next())
+			{
+				if(p->Next() == pCommand)
+				{
+					p->SetNext(pCommand->Next());
+					break;
+				}
+			}
+		}
+		if(!pCommand->m_Temp)
+			delete pCommand;
+	}
 }
 
 void CConsole::RegisterTemp(const char *pName, const char *pParams, int Flags, const char *pHelp)

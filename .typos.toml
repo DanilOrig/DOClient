@@ -14,6 +14,11 @@ extend-exclude = [
 	# tests with invalid words
 	"src/test/windows_test.cpp",
 	"src/test/str_test.cpp",
+	# <EClient
+	"src/engine/shared/config_variables_entity.h",
+	"data/entity/builtinscripts",
+	"README.md",
+	# EClient>
 ]
 
 [default]

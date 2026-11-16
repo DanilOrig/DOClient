@@ -382,7 +382,7 @@ void CMenus::RenderSettingsAssets(CUIRect MainView)
 	User.m_pUser = this;
 	User.m_LoadedFunc = [&]() {
 		if(time_get_nanoseconds() - LoadStartTime > 500ms)
-			RenderLoading(Localize("Loading assets"), "", 0);
+			RenderLoading(Localize("Loading E-Client"), "Loading assets", 0);
 	};
 	if(s_CurCustomTab == ASSETS_TAB_ENTITIES)
 	{
@@ -429,7 +429,6 @@ void CMenus::RenderSettingsAssets(CUIRect MainView)
 
 	// skin selector
 	MainView.HSplitTop(MainView.h - 10.0f - ms_ButtonHeight, &CustomList, &MainView);
-	m_SettingsSplitY = CustomList.y - m_SettingsViewY;
 	if(gs_aInitCustomList[s_CurCustomTab])
 	{
 		int ListSize = 0;

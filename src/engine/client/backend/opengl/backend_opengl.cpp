@@ -91,6 +91,10 @@ void CCommandProcessorFragment_OpenGL::SetState(const CCommandBuffer::SState &St
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 		break;
+	case EBlendMode::MULTIPLY:
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_DST_COLOR, GL_ZERO);
+		break;
 	default:
 		dbg_assert_failed("Invalid blend mode: %d", (int)State.m_BlendMode);
 	};
@@ -1009,6 +1013,10 @@ void CCommandProcessorFragment_OpenGL::Cmd_Render(const CCommandBuffer::SCommand
 	default:
 		dbg_assert_failed("Invalid primitive type: %d", (int)pCommand->m_PrimType);
 	};
+
+	glDisableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+	glDisableClientState(GL_COLOR_ARRAY);
 #endif
 }
 
@@ -1184,6 +1192,10 @@ void CCommandProcessorFragment_OpenGL2::SetState(const CCommandBuffer::SState &S
 		case EBlendMode::ADDITIVE:
 			// glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+			break;
+		case EBlendMode::MULTIPLY:
+			// glEnable(GL_BLEND);
+			glBlendFunc(GL_DST_COLOR, GL_ZERO);
 			break;
 		default:
 			dbg_assert_failed("Invalid blend mode: %d", (int)State.m_BlendMode);
