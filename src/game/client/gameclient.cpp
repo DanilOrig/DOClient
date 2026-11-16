@@ -4051,14 +4051,14 @@ static void InsertCustomClientIntoColor(int &ColorBody, int &ColorFeet)
 	Body.m_Color = ColorBody;
 
 	// alpha is unused
-	Body.m_B[3] = (unsigned char)ENTITY_CLIENT_ID_BODY;
+	Body.m_B[3] = (unsigned char)DOCLIENT_CLIENT_TAG;
 	ColorBody = Body.m_Color;
 
 	ColorIdentifier Feet;
 	Feet.m_Color = ColorFeet;
 
 	// alpha is unused
-	Feet.m_B[3] = (unsigned char)ENTITY_CLIENT_ID_FEET;
+	Feet.m_B[3] = 0;
 	ColorFeet = Feet.m_Color;
 }
 
