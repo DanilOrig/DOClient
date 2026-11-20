@@ -1,0 +1,39 @@
+#ifndef GAME_CLIENT_COMPONENTS_EDGEHELPER_H
+#define GAME_CLIENT_COMPONENTS_EDGEHELPER_H
+
+#include <engine/console.h>
+
+#include <game/client/component.h>
+#include <game/client/ui_rect.h>
+class CEdgeHelper : public CComponent
+{
+	bool m_Active = false;
+
+	int m_PosX;
+	void DoIconButton(CUIRect *pRect, const char *pIcon, float TextSize, ColorRGBA IconColor) const;
+	void DoDoubleIconButton(CUIRect *pRect, const char *pIcon, float TextSize, ColorRGBA IconColor) const;
+	static void ConToggleEdgeHelper(IConsole::IResult *pResult, void *pUserData);
+
+	std::vector<int> m_Values = {41, 31, 28, 25, 16, 13, 56, 62, 63, 66, 69, 72, 81, 84};
+
+	float GetPositionEdgeHelper(int ClientId, int Conn);
+
+	void RenderEdgeHelper();
+	void RenderEdgeHelperEdgeInfo(CUIRect *pBase);
+	void RenderEdgeHelperJumpInfo(CUIRect *pBase);
+
+public:
+	CEdgeHelper();
+	int Sizeof() const override { return sizeof(*this); }
+
+	void SetActive(bool Active);
+
+	void OnReset() override;
+	void OnRender() override;
+	void OnConsoleInit() override;
+	void OnRelease() override;
+
+	bool IsActive() const;
+};
+
+#endif

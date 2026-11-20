@@ -240,6 +240,8 @@ class IGraphics : public IInterface
 {
 	MACRO_INTERFACE("graphics")
 protected:
+	float m_ScreenAspectOverride = 0.0f;
+	bool m_ScreenAspectOverrideEnabled = false;
 	int m_ScreenWidth;
 	int m_ScreenHeight;
 	int m_ViewportX = 0;
@@ -277,7 +279,9 @@ public:
 	int ScreenWidth() const { return m_ScreenWidth; }
 	int ScreenHeight() const { return m_ScreenHeight; }
 	vec2 ScreenSize() const { return vec2(m_ScreenWidth, m_ScreenHeight); }
-	float ScreenAspect() const { return (float)ScreenWidth() / (float)ScreenHeight(); }
+	// DOClient: aspect ratio override for the custom aspect feature
+	float ScreenAspect() const { return m_ScreenAspectOverrideEnabled && m_ScreenAspectOverride > 0.0f ? m_ScreenAspectOverride : (float)ScreenWidth() / (float)ScreenHeight(); }
+	void SetScreenAspectOverride(float Aspect);
 	float ScreenHiDPIScale() const { return m_ScreenHiDPIScale; }
 	int WindowWidth() const { return m_ScreenWidth / m_ScreenHiDPIScale; }
 	int WindowHeight() const { return m_ScreenHeight / m_ScreenHiDPIScale; }

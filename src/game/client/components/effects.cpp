@@ -397,6 +397,12 @@ void CEffects::Explosion(vec2 Pos, float Alpha)
 
 void CEffects::HammerHit(vec2 Pos, float Alpha, float Volume)
 {
+	// DOClient: option to hide the hammer hit effect
+	if(g_Config.m_EcHammerHitEffect == 1)
+		Alpha = 0.0f;
+	if(g_Config.m_EcHammerHitEffect == 2)
+		return;
+
 	// add the explosion
 	CParticle p;
 	p.SetDefault();

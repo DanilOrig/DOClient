@@ -46,6 +46,7 @@ CHud::CHud()
 {
 	m_FPSTextContainerIndex.Reset();
 	m_DDRaceEffectsTextContainerIndex.Reset();
+	m_TimeDiffTextContainerIndex.Reset(); // EClient
 	m_PlayerAngleTextContainerIndex.Reset();
 	m_PlayerCheckpointTextContainerIndex.Reset(); // EClient
 	m_PlayerPrevAngle = -INFINITY;
@@ -84,6 +85,7 @@ void CHud::ResetHudContainers()
 
 	TextRender()->DeleteTextContainer(m_FPSTextContainerIndex);
 	TextRender()->DeleteTextContainer(m_DDRaceEffectsTextContainerIndex);
+	TextRender()->DeleteTextContainer(m_TimeDiffTextContainerIndex); // EClient
 	TextRender()->DeleteTextContainer(m_PlayerAngleTextContainerIndex);
 	TextRender()->DeleteTextContainer(m_PlayerCheckpointTextContainerIndex); // EClient
 	m_PlayerPrevAngle = -INFINITY;
@@ -1050,6 +1052,13 @@ void CHud::RenderPlayerState(const int ClientId)
 	CNetObj_Character *pPlayer = &GameClient()->m_aClients[ClientId].m_RenderCur;
 	int TotalJumpsToDisplay = 0;
 
+	// EClient: a practice tee has no snapshot of its own to carry extended display info, and the
+	// real tee's carries none at all once that tee is paused. What is swapped in here is its core,
+	// which is the real thing rather than something interpolated, so everything the client gates on
+	// that info is available for it.
+	const bool HasDisplayInfo = GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo ||
+				    GameClient()->m_LocalPractice.IsSimulated(ClientId);
+
 	// EClient: this used to shift itself down by the height of the health, armor and ammo rows by
 	// hand, which assumed those were always drawn at full size. The push solver stacks it under
 	// whatever health_ammo actually turned out to be now, so it scales with it.
@@ -1060,7 +1069,7 @@ void CHud::RenderPlayerState(const int ClientId)
 	if(g_Config.m_ClShowhudJumpsIndicator)
 	{
 		int AvailableJumpsToDisplay;
-		if(GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo)
+		if(HasDisplayInfo)
 		{
 			const bool Grounded = Collision()->IsOnGround(vec2(pPlayer->m_X, pPlayer->m_Y), CCharacterCore::PhysicalSize());
 			int UsedJumps = pCharacter->m_JumpedTotal;
@@ -1095,7 +1104,7 @@ void CHud::RenderPlayerState(const int ClientId)
 		}
 		else
 		{
-			TotalJumpsToDisplay = AvailableJumpsToDisplay = absolute(GameClient()->m_Snap.m_aCharacters[ClientId].m_ExtendedData.m_Jumps);
+			TotalJumpsToDisplay = AvailableJumpsToDisplay = std::clamp(absolute(GameClient()->m_Snap.m_aCharacters[ClientId].m_ExtendedData.m_Jumps), 0, 10);
 		}
 
 		// render available and used jumps
@@ -1146,7 +1155,7 @@ void CHud::RenderPlayerState(const int ClientId)
 		{
 			const int Max = g_pData->m_Weapons.m_Ninja.m_Duration * Client()->GameTickSpeed() / 1000;
 			float NinjaProgress = std::clamp(pCharacter->m_Ninja.m_ActivationTick + g_pData->m_Weapons.m_Ninja.m_Duration * Client()->GameTickSpeed() / 1000 - Client()->GameTick(g_Config.m_ClDummy), 0, Max) / (float)Max;
-			if(NinjaProgress > 0.0f && GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo)
+			if(NinjaProgress > 0.0f && HasDisplayInfo)
 			{
 				RenderNinjaBarPos(x, y - 12, 6.f, 24.f, NinjaProgress);
 			}
@@ -2202,6 +2211,7 @@ void CHud::OnRender()
 		&g_Config.m_ClShowFrozenHud,
 		&g_Config.m_ClShowFrozenText,
 		&g_Config.m_ClNotifyWhenLast,
+		&g_Config.m_ClShowhudTimeCpDiff,
 		&g_Config.m_ClLocalPracticeAlert}; // EClient
 	int aPreviewSavedConfigs[std::size(apPreviewConfigs)];
 
@@ -2353,7 +2363,11 @@ void CHud::OnRender()
 					RenderAmmoHealthAndArmor(Preview ? &PreviewLocalCharacter : GameClient()->m_Snap.m_pLocalCharacter);
 				}
 			}
-			if(GameClient()->m_Snap.m_aCharacters[GameClient()->m_Snap.m_LocalClientId].m_HasExtendedData && g_Config.m_ClShowhudDDRace && GameClient()->m_GameInfo.m_HudDDRace)
+			// EClient: IsSimulated, because the practice tee's state is all there whether or not the
+			// server is still sending extended data for the tee it stands in for
+			if((GameClient()->m_Snap.m_aCharacters[GameClient()->m_Snap.m_LocalClientId].m_HasExtendedData ||
+				   GameClient()->m_LocalPractice.IsSimulated(GameClient()->m_Snap.m_LocalClientId)) &&
+				g_Config.m_ClShowhudDDRace && GameClient()->m_GameInfo.m_HudDDRace)
 			{
 				if(!m_HudLayout.IsOccluded(EHudElement::PLAYER_STATE))
 				{
@@ -2485,6 +2499,7 @@ void CHud::OnRender()
 		}
 		// EClient: scopes itself, since it only draws on the frames it has something to say
 		GameClient()->m_LocalPractice.RenderMovedAlert(PreviewActive());
+		GameClient()->m_FinishPrediction.RenderHud(PreviewActive());
 	}
 	RenderCursor();
 
@@ -2570,115 +2585,153 @@ void CHud::OnMessage(int MsgType, void *pRawMsg)
 
 void CHud::RenderDDRaceEffects()
 {
-	if(m_DDRaceTime)
+	// EClient: the finish shout and the difference readout are elements of their own, and these are
+	// the coordinates they draw at. Upstream appended the difference to the shout as a second line
+	// and kept the checkpoint difference somewhere else entirely, taking turns with both; the two
+	// differences are the same reading, so they are one element, and the shout is one line.
+	constexpr float FINISH_TIME_Y = 20.0f;
+	constexpr float FINISH_TIME_FONT_SIZE = 12.0f;
+	constexpr float DIFF_Y = 12.0f;
+	constexpr float DIFF_FONT_SIZE = 10.0f;
+
+	const int Tick = Client()->GameTick(g_Config.m_ClDummy);
+	const int TickSpeed = Client()->GameTickSpeed();
+
+	// calculate alpha (4 sec 1 than get lower the next 2 sec)
+	auto BlendOut = [Tick, TickSpeed](int ReceivedTick) {
+		if(ReceivedTick + TickSpeed * 4 >= Tick)
+			return 1.0f;
+		// lower the alpha slowly to blend text out
+		return ((float)(ReceivedTick + TickSpeed * 6) - (float)Tick) / (float)(TickSpeed * 2);
+	};
+
+	const bool ShowFinish = m_DDRaceTime && m_ShowFinishTime && m_FinishTimeLastReceivedTick + TickSpeed * 6 > Tick;
+
+	// EClient: nobody finishes a race to order, so while the editor is open the shout says how big
+	// it would be if someone had. Only the editor ever asks: once it is up it reports what it is
+	// actually drawing, and while it is down nothing else reads the rect of an element that is not
+	// on screen. The width follows the time text, so a constant in the table cannot be right.
+	if(!ShowFinish && PreviewActive())
+	{
+		// Zero padded, because that is what str_time writes for anything under an hour -- a sample
+		// a character short of the real thing makes the box narrower than the text it stands for
+		const char *pSample = "Finish time: 00:00.00";
+		const float SampleWidth = TextRender()->TextWidth(FINISH_TIME_FONT_SIZE, pSample);
+		m_HudLayout.ReportNominalRect(EHudElement::FINISH_TIME,
+			vec2(m_Width / 2.0f - SampleWidth / 2.0f, FINISH_TIME_Y), vec2(SampleWidth, FINISH_TIME_FONT_SIZE));
+	}
+
+	if(ShowFinish)
 	{
 		char aBuf[64];
 		char aTime[32];
-		if(m_ShowFinishTime && m_FinishTimeLastReceivedTick + Client()->GameTickSpeed() * 6 > Client()->GameTick(g_Config.m_ClDummy))
+		str_time(m_DDRaceTime, ETimeFormat::HOURS_CENTISECS, aTime, sizeof(aTime));
+		str_format(aBuf, sizeof(aBuf), "Finish time: %s", aTime);
+
+		const float Alpha = BlendOut(m_FinishTimeLastReceivedTick);
+		TextRender()->TextColor(1, 1, 1, Alpha);
+
+		if(!m_HudLayout.IsOccluded(EHudElement::FINISH_TIME))
 		{
-			str_time(m_DDRaceTime, ETimeFormat::HOURS_CENTISECS, aTime, sizeof(aTime));
-			str_format(aBuf, sizeof(aBuf), "Finish time: %s", aTime);
+			CHudLayout::CScope Scope(&m_HudLayout, EHudElement::FINISH_TIME);
 
-			// calculate alpha (4 sec 1 than get lower the next 2 sec)
-			float Alpha = 1.0f;
-			if(m_FinishTimeLastReceivedTick + Client()->GameTickSpeed() * 4 < Client()->GameTick(g_Config.m_ClDummy) && m_FinishTimeLastReceivedTick + Client()->GameTickSpeed() * 6 > Client()->GameTick(g_Config.m_ClDummy))
-			{
-				// lower the alpha slowly to blend text out
-				Alpha = ((float)(m_FinishTimeLastReceivedTick + Client()->GameTickSpeed() * 6) - (float)Client()->GameTick(g_Config.m_ClDummy)) / (float)(Client()->GameTickSpeed() * 2);
-			}
+			const float TextWidth = TextRender()->TextWidth(FINISH_TIME_FONT_SIZE, aBuf);
+			const float TextX = m_Width / 2.0f - TextWidth / 2.0f;
 
-			TextRender()->TextColor(1, 1, 1, Alpha);
-			CTextCursor Cursor;
-			Cursor.SetPosition(vec2(150 * Graphics()->ScreenAspect() - TextRender()->TextWidth(12, aBuf) / 2, 20));
-			Cursor.m_FontSize = 12.0f;
-			TextRender()->RecreateTextContainer(m_DDRaceEffectsTextContainerIndex, &Cursor, aBuf);
-			if(m_FinishTimeDiff != 0.0f && m_DDRaceEffectsTextContainerIndex.Valid())
-			{
-				if(m_FinishTimeDiff < 0)
-				{
-					str_time_float(-m_FinishTimeDiff, ETimeFormat::HOURS_CENTISECS, aTime, sizeof(aTime));
-					str_format(aBuf, sizeof(aBuf), "-%s", aTime);
-					TextRender()->TextColor(0.5f, 1.0f, 0.5f, Alpha); // green
-				}
-				else
-				{
-					str_time_float(m_FinishTimeDiff, ETimeFormat::HOURS_CENTISECS, aTime, sizeof(aTime));
-					str_format(aBuf, sizeof(aBuf), "+%s", aTime);
-					TextRender()->TextColor(1.0f, 0.5f, 0.5f, Alpha); // red
-				}
-				CTextCursor DiffCursor;
-				DiffCursor.SetPosition(vec2(150 * Graphics()->ScreenAspect() - TextRender()->TextWidth(10, aBuf) / 2, 34));
-				DiffCursor.m_FontSize = 10.0f;
-				TextRender()->AppendTextContainer(m_DDRaceEffectsTextContainerIndex, &DiffCursor, aBuf);
-			}
-			if(m_DDRaceEffectsTextContainerIndex.Valid())
-			{
-				auto OutlineColor = TextRender()->DefaultTextOutlineColor();
-				OutlineColor.a *= Alpha;
-				TextRender()->RenderTextContainer(m_DDRaceEffectsTextContainerIndex, TextRender()->DefaultTextColor(), OutlineColor);
-			}
-			TextRender()->TextColor(TextRender()->DefaultTextColor());
-		}
-		else if(g_Config.m_ClShowhudTimeCpDiff && !m_ShowFinishTime && m_TimeCpLastReceivedTick + Client()->GameTickSpeed() * 6 > Client()->GameTick(g_Config.m_ClDummy))
-		{
-			if(m_TimeCpDiff < 0)
-			{
-				str_time_float(-m_TimeCpDiff, ETimeFormat::HOURS_CENTISECS, aTime, sizeof(aTime));
-				str_format(aBuf, sizeof(aBuf), "-%s", aTime);
-			}
-			else
-			{
-				str_time_float(m_TimeCpDiff, ETimeFormat::HOURS_CENTISECS, aTime, sizeof(aTime));
-				str_format(aBuf, sizeof(aBuf), "+%s", aTime);
-			}
-
-			// calculate alpha (4 sec 1 than get lower the next 2 sec)
-			float Alpha = 1.0f;
-			if(m_TimeCpLastReceivedTick + Client()->GameTickSpeed() * 4 < Client()->GameTick(g_Config.m_ClDummy) && m_TimeCpLastReceivedTick + Client()->GameTickSpeed() * 6 > Client()->GameTick(g_Config.m_ClDummy))
-			{
-				// lower the alpha slowly to blend text out
-				Alpha = ((float)(m_TimeCpLastReceivedTick + Client()->GameTickSpeed() * 6) - (float)Client()->GameTick(g_Config.m_ClDummy)) / (float)(Client()->GameTickSpeed() * 2);
-			}
-
-			if(m_TimeCpDiff > 0)
-				TextRender()->TextColor(1.0f, 0.5f, 0.5f, Alpha); // red
-			else if(m_TimeCpDiff < 0)
-				TextRender()->TextColor(0.5f, 1.0f, 0.5f, Alpha); // green
-			else if(!m_TimeCpDiff)
-				TextRender()->TextColor(1, 1, 1, Alpha); // white
-
-			float TextY = 12.0f;
-			const vec2 IslandPos = this->IslandPos();
-			const vec2 IslandSize = this->IslandSize();
-			if(IslandSize.x > 0.0f && IslandSize.y > 0.0f)
-			{
-				const bool OverlapY = TextY < IslandPos.y + IslandSize.y && TextY + 10 > IslandPos.y;
-				if(OverlapY)
-				{
-					constexpr float OverlapPadding = 2.0f;
-					TextY = IslandPos.y + IslandSize.y + OverlapPadding;
-				}
-			}
-			// EClient: the frozen count is a HUD element now, so its real rect is what to step past
-			if(m_HudLayout.IsLive(EHudElement::FROZEN_TEXT))
-			{
-				const CHudLayout::CRect FrozenText = m_HudLayout.ResolvedRect(EHudElement::FROZEN_TEXT);
-				TextY = std::max(TextY, FrozenText.m_Pos.y + FrozenText.m_Size.y + 2.0f);
-			}
+			m_HudLayout.ReportNaturalRect(EHudElement::FINISH_TIME,
+				vec2(TextX, FINISH_TIME_Y), vec2(TextWidth, FINISH_TIME_FONT_SIZE));
 
 			CTextCursor Cursor;
-			Cursor.SetPosition(vec2(150 * Graphics()->ScreenAspect() - TextRender()->TextWidth(10, aBuf) / 2, TextY));
-			Cursor.m_FontSize = 10.0f;
+			Cursor.SetPosition(vec2(TextX, FINISH_TIME_Y));
+			Cursor.m_FontSize = FINISH_TIME_FONT_SIZE;
 			TextRender()->RecreateTextContainer(m_DDRaceEffectsTextContainerIndex, &Cursor, aBuf);
 
 			if(m_DDRaceEffectsTextContainerIndex.Valid())
 			{
-				auto OutlineColor = TextRender()->DefaultTextOutlineColor();
+				ColorRGBA OutlineColor = TextRender()->DefaultTextOutlineColor();
 				OutlineColor.a *= Alpha;
 				TextRender()->RenderTextContainer(m_DDRaceEffectsTextContainerIndex, TextRender()->DefaultTextColor(), OutlineColor);
 			}
-			TextRender()->TextColor(TextRender()->DefaultTextColor());
 		}
+		TextRender()->TextColor(TextRender()->DefaultTextColor());
+	}
+
+	// EClient: which difference there is to report, if any. The record one wins while the shout is
+	// up, since that is the one the player just earned, and a checkpoint cannot arrive in the same
+	// breath as a finish anyway. Touching a checkpoint is not something the editor can arrange, so
+	// while it is open the readout stands in for itself with a zero difference and no blend out.
+	const bool TimeCpLive = m_DDRaceTime && !m_ShowFinishTime && m_TimeCpLastReceivedTick + TickSpeed * 6 > Tick;
+	bool HasDiff = false;
+	float Diff = 0.0f;
+	float DiffAlpha = 1.0f;
+	if(g_Config.m_ClShowhudTimeCpDiff)
+	{
+		HasDiff = true;
+		if(ShowFinish && m_FinishTimeDiff != 0.0f)
+		{
+			Diff = m_FinishTimeDiff;
+			DiffAlpha = BlendOut(m_FinishTimeLastReceivedTick);
+		}
+		else if(TimeCpLive)
+		{
+			Diff = m_TimeCpDiff;
+			DiffAlpha = BlendOut(m_TimeCpLastReceivedTick);
+		}
+		else
+		{
+			// Nothing has arrived to report, so only the editor has a reason to see it
+			HasDiff = PreviewActive();
+		}
+	}
+
+	if(HasDiff)
+	{
+		char aBuf[64];
+		char aTime[32];
+		if(Diff < 0)
+		{
+			str_time_float(-Diff, ETimeFormat::HOURS_CENTISECS, aTime, sizeof(aTime));
+			str_format(aBuf, sizeof(aBuf), "-%s", aTime);
+		}
+		else
+		{
+			str_time_float(Diff, ETimeFormat::HOURS_CENTISECS, aTime, sizeof(aTime));
+			str_format(aBuf, sizeof(aBuf), "+%s", aTime);
+		}
+
+		if(Diff > 0)
+			TextRender()->TextColor(1.0f, 0.5f, 0.5f, DiffAlpha); // red
+		else if(Diff < 0)
+			TextRender()->TextColor(0.5f, 1.0f, 0.5f, DiffAlpha); // green
+		else
+			TextRender()->TextColor(1, 1, 1, DiffAlpha); // white
+
+		// EClient: it used to hold a y of 12, then step down past the media island if the two
+		// overlapped, then step down again past the frozen count -- which knew about those two
+		// neighbours and nothing else, so anything else moved into that band got drawn over.
+		// Saying where it is and letting the solver clear it is the whole of it now.
+		if(!m_HudLayout.IsOccluded(EHudElement::TIME_CP_DIFF))
+		{
+			CHudLayout::CScope Scope(&m_HudLayout, EHudElement::TIME_CP_DIFF);
+
+			const float TextWidth = TextRender()->TextWidth(DIFF_FONT_SIZE, aBuf);
+			const float TextX = m_Width / 2.0f - TextWidth / 2.0f;
+
+			m_HudLayout.ReportNaturalRect(EHudElement::TIME_CP_DIFF, vec2(TextX, DIFF_Y), vec2(TextWidth, DIFF_FONT_SIZE));
+
+			CTextCursor Cursor;
+			Cursor.SetPosition(vec2(TextX, DIFF_Y));
+			Cursor.m_FontSize = DIFF_FONT_SIZE;
+			TextRender()->RecreateTextContainer(m_TimeDiffTextContainerIndex, &Cursor, aBuf);
+
+			if(m_TimeDiffTextContainerIndex.Valid())
+			{
+				ColorRGBA OutlineColor = TextRender()->DefaultTextOutlineColor();
+				OutlineColor.a *= DiffAlpha;
+				TextRender()->RenderTextContainer(m_TimeDiffTextContainerIndex, TextRender()->DefaultTextColor(), OutlineColor);
+			}
+		}
+		TextRender()->TextColor(TextRender()->DefaultTextColor());
 	}
 }
 
@@ -2752,36 +2805,6 @@ void CHud::FreezeHelpers()
 	m_HudLayout.ReportNominalRect(EHudElement::NOTIFY_LAST,
 		vec2(NOTIFY_LAST_X, 4.0f), vec2(TextRender()->TextWidth(14.0f, g_Config.m_ClNotifyWhenLastText), 14.0f));
 
-	if(g_Config.m_ClShowFrozenText <= 0 && g_Config.m_ClShowFrozenHud <= 0 && !g_Config.m_ClNotifyWhenLast)
-	{
-		// The tee row has nowhere to be while every frozen feature is off, and saying so is not the
-		// same as never having said, which would leave its last rect standing
-		m_HudLayout.ClearNominalRect(EHudElement::FROZEN_TEES);
-		return;
-	}
-
-	if(!GameClient()->m_GameInfo.m_EntitiesDDRace)
-		return;
-
-	int NumInTeam = 0;
-	int NumFrozen = 0;
-	int LocalTeamID = GameClient()->m_Snap.m_SpecInfo.m_Active == 1 && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId != -1 ?
-				  GameClient()->m_Teams.Team(GameClient()->m_Snap.m_SpecInfo.m_SpectatorId) :
-				  GameClient()->m_Teams.Team(GameClient()->m_Snap.m_LocalClientId);
-
-	for(int i = 0; i < MAX_CLIENTS; i++)
-	{
-		if(!GameClient()->m_Snap.m_apPlayerInfos[i])
-			continue;
-
-		if(GameClient()->m_Teams.Team(i) == LocalTeamID)
-		{
-			NumInTeam++;
-			if(GameClient()->m_aClients[i].m_FreezeEnd > 0 || GameClient()->m_aClients[i].m_DeepFrozen)
-				NumFrozen++;
-		}
-	}
-
 	// EClient: this used to know about the media island and the fps counter by name. It now asks
 	// the layout what room every element that is actually on screen leaves it, so anything moved
 	// into its band is taken into account without this having to be told about it.
@@ -2805,6 +2828,36 @@ void CHud::FreezeHelpers()
 
 	m_HudLayout.ReportNominalRect(EHudElement::FROZEN_TEES,
 		vec2(TeeHudX, TeeRowY), vec2(TeeSize, TeeSize + 3.0f));
+
+	// EClient: switched off, so there is nothing to draw -- but the rect above stands, because
+	// where the row would go is a fair question to answer before it has anything to show. It
+	// used to withdraw here instead, which left the editor with only the table's constant to
+	// fall back on, and that constant cannot be right: the resting place is worked out from the
+	// aspect ratio and the tee size, and at sixteen by nine the two were forty-five units apart.
+	if(g_Config.m_ClShowFrozenText <= 0 && g_Config.m_ClShowFrozenHud <= 0 && !g_Config.m_ClNotifyWhenLast)
+		return;
+
+	if(!GameClient()->m_GameInfo.m_EntitiesDDRace)
+		return;
+
+	int NumInTeam = 0;
+	int NumFrozen = 0;
+	int LocalTeamID = GameClient()->m_Snap.m_SpecInfo.m_Active == 1 && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId != -1 ?
+				  GameClient()->m_Teams.Team(GameClient()->m_Snap.m_SpecInfo.m_SpectatorId) :
+				  GameClient()->m_Teams.Team(GameClient()->m_Snap.m_LocalClientId);
+
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(!GameClient()->m_Snap.m_apPlayerInfos[i])
+			continue;
+
+		if(GameClient()->m_Teams.Team(i) == LocalTeamID)
+		{
+			NumInTeam++;
+			if(GameClient()->m_aClients[i].m_FreezeEnd > 0 || GameClient()->m_aClients[i].m_DeepFrozen)
+				NumFrozen++;
+		}
+	}
 
 	// Notify when last
 	if(g_Config.m_ClNotifyWhenLast)

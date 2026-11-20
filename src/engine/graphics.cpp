@@ -1,6 +1,12 @@
 #include "graphics.h"
 
 // helper functions
+void IGraphics::SetScreenAspectOverride(float Aspect)
+{
+	m_ScreenAspectOverride = Aspect;
+	m_ScreenAspectOverrideEnabled = Aspect > 0.0f;
+}
+
 void IGraphics::CalcScreenParams(float Aspect, float Zoom, float *pWidth, float *pHeight) const
 {
 	const float Amount = 1150 * 1000;

@@ -27,6 +27,8 @@
 #include <engine/input.h>
 #include <engine/keys.h>
 #include <engine/shared/config.h>
+#include <engine/http.h>
+#include <engine/shared/json.h>
 #include <engine/shared/csv.h>
 #include <engine/shared/protocol.h>
 #include <engine/shared/video.h>
@@ -1551,6 +1553,13 @@ void CChat::OnPrepareLines(float y)
 					TextRender()->TextEx(&AppendCursor, pTranslatedLanguage);
 					TextRender()->TextEx(&AppendCursor, "]");
 				}
+
+				// DOClient: the original under the translation
+				if(g_Config.m_EcTranslateShowOriginal)
+				{
+					TextRender()->TextEx(&AppendCursor, "\n");
+					MeasureText(pText);
+				}
 			}
 			else if(pTranslatedError)
 			{
@@ -1717,6 +1726,22 @@ void CChat::OnPrepareLines(float y)
 				TextRender()->TextColor(ColorLang);
 				TextRender()->CreateOrAppendTextContainer(Line.m_TextContainerIndex, &AppendCursor, Lang.c_str());
 				RawMessage += Lang;
+			}
+
+			// DOClient: the original message, dimmed, right under the translation
+			if(g_Config.m_EcTranslateShowOriginal)
+			{
+				ColorRGBA ColorOriginal = Color;
+				ColorOriginal.r *= 0.65f;
+				ColorOriginal.g *= 0.65f;
+				ColorOriginal.b *= 0.65f;
+				ColorOriginal.a *= 0.8f;
+				TextRender()->TextColor(ColorOriginal);
+				TextRender()->CreateOrAppendTextContainer(Line.m_TextContainerIndex, &AppendCursor, "\n");
+				TextRender()->CreateOrAppendTextContainer(Line.m_TextContainerIndex, &AppendCursor, pText);
+				TextRender()->TextColor(Color);
+				RawMessage += "\n";
+				RawMessage += pText;
 			}
 		}
 		else if(pTranslatedError)
@@ -2415,7 +2440,7 @@ void CChat::OpenChatPopup(const CUIRect &ButtonRect)
 	// Anchored on the button's top edge rather than below it. The input line sits low enough that
 	// the menu is always folded upwards, and this way it stops at the button instead of covering
 	// it.
-	Ui()->DoPopupMenu(&m_ChatPopupContext, ButtonRect.x, ButtonRect.y, POPUP_WIDTH, PopupHeight(5),
+	Ui()->DoPopupMenu(&m_ChatPopupContext, ButtonRect.x, ButtonRect.y, POPUP_WIDTH, PopupHeight(4),
 		&m_ChatPopupContext, CChatPopupContext::Render);
 }
 
@@ -2435,6 +2460,10 @@ void CChat::OpenLanguagePopup(const CUIRect &FromRect)
 	m_LanguagePopupContext.m_vCodes.clear();
 	m_LanguagePopupContext.m_vNames.clear();
 
+	// DOClient: auto detection is a valid choice for the source language
+	m_LanguagePopupContext.m_vCodes.emplace_back("auto");
+	m_LanguagePopupContext.m_vNames.emplace_back("Auto");
+
 	for(int i = 0; i < CTranslate::NumLanguages(); i++)
 	{
 		m_LanguagePopupContext.m_vCodes.emplace_back(CTranslate::LanguageCode(i));
@@ -2443,7 +2472,7 @@ void CChat::OpenLanguagePopup(const CUIRect &FromRect)
 
 	// Whatever the lists hold that the table does not still has to be reachable, or a code typed
 	// into the config by hand could never be taken back out from here
-	const char *apLists[] = {g_Config.m_EcTranslateLanguageWhitelist, g_Config.m_EcTranslateLanguageBlacklist};
+	const char *apLists[] = {g_Config.m_EcTranslateLanguageWhitelist, g_Config.m_EcTranslateLanguageBlacklist, g_Config.m_EcChatTranslateFrom};
 	for(const char *pList : apLists)
 	{
 		char aToken[16];
@@ -2466,7 +2495,8 @@ void CChat::OpenLanguagePopup(const CUIRect &FromRect)
 	m_LanguagePopupContext.m_vWhitelistButtons.resize(m_LanguagePopupContext.m_vCodes.size());
 	m_LanguagePopupContext.m_vBlacklistButtons.resize(m_LanguagePopupContext.m_vCodes.size());
 
-	const float Height = std::min(PopupHeight((int)m_LanguagePopupContext.m_vCodes.size()), POPUP_LANGUAGE_MAX_HEIGHT);
+	// DOClient: one extra row on top for the From / In / Me selector
+	const float Height = std::min(PopupHeight((int)m_LanguagePopupContext.m_vCodes.size() + 1), POPUP_LANGUAGE_MAX_HEIGHT);
 	Ui()->DoPopupMenu(&m_LanguagePopupContext, FromRect.x + FromRect.w, FromRect.y, POPUP_LANGUAGE_WIDTH, Height,
 		&m_LanguagePopupContext, CLanguagePopupContext::Render);
 }
@@ -2678,8 +2708,20 @@ CUi::EPopupMenuFunctionResult CChat::CLanguagePopupContext::Render(void *pContex
 	ScrollParams.m_ScrollUnit = 3 * (POPUP_ENTRY_HEIGHT + POPUP_ENTRY_SPACING);
 	pPopup->m_ScrollRegion.Begin(&View, &ScrollParams);
 
-	const ColorRGBA WhitelistColor = ColorRGBA(0.4f, 0.9f, 0.4f, 0.75f);
-	const ColorRGBA BlacklistColor = ColorRGBA(0.95f, 0.35f, 0.35f, 0.75f);
+	// DOClient: pick which language slot the list edits
+	char aaSlots[2][64];
+	str_format(aaSlots[0], sizeof(aaSlots[0]), "%s: %s", Localize("From"), g_Config.m_EcChatTranslateFrom);
+	str_format(aaSlots[1], sizeof(aaSlots[1]), "%s: %s", Localize("Into"), g_Config.m_EcTranslateTarget);
+	CUIRect SlotRow = View;
+	View.HSplitTop(POPUP_ENTRY_HEIGHT + POPUP_ENTRY_SPACING, &SlotRow, &View);
+	for(int Slot = 0; Slot < 2; Slot++)
+	{
+		CUIRect ButtonRect;
+		SlotRow.VSplitLeft(SlotRow.w / (2 - Slot), &ButtonRect, &SlotRow);
+		if(pUi->DoButton_PopupMenu(&pPopup->m_aSlotButtons[Slot], aaSlots[Slot], &ButtonRect, POPUP_FONT_SIZE * 0.9f, TEXTALIGN_MC, 2.0f, true, true,
+			   pPopup->m_EditSlot == Slot ? std::optional(ColorRGBA(0.35f, 0.55f, 0.95f, 0.75f)) : std::nullopt))
+			pPopup->m_EditSlot = Slot;
+	}
 
 	for(size_t i = 0; i < pPopup->m_vCodes.size(); ++i)
 	{
@@ -2692,34 +2734,24 @@ CUi::EPopupMenuFunctionResult CChat::CLanguagePopupContext::Render(void *pContex
 
 		const char *pCode = pPopup->m_vCodes[i].c_str();
 
-		CUIRect Whitelist, Blacklist, Label;
-		Slot.VSplitRight(POPUP_ENTRY_HEIGHT, &Slot, &Blacklist);
-		Slot.VSplitRight(POPUP_ENTRY_SPACING, &Slot, nullptr);
-		Slot.VSplitRight(POPUP_ENTRY_HEIGHT, &Label, &Whitelist);
-
-		// A code the table does not name is shown on its own, there is nothing to put beside it
 		char aBuf[64];
 		if(pPopup->m_vNames[i].empty())
 			str_copy(aBuf, pCode);
 		else
 			str_format(aBuf, sizeof(aBuf), "%s (%s)", pPopup->m_vNames[i].c_str(), pCode);
-		pUi->DoLabel(&Label, aBuf, POPUP_FONT_SIZE, TEXTALIGN_ML);
 
-		const bool Whitelisted = CTranslate::IsLanguageInList(g_Config.m_EcTranslateLanguageWhitelist, pCode);
-		if(pUi->DoButton_FontIcon(&pPopup->m_vWhitelistButtons[i], FontIcon::STAR, Whitelisted, &Whitelist, BUTTONFLAG_LEFT,
-			   IGraphics::CORNER_ALL, true, Whitelisted ? std::optional(WhitelistColor.WithMultipliedAlpha(pUi->ButtonColorMul(&pPopup->m_vWhitelistButtons[i]))) : std::nullopt))
-		{
-			CTranslate::SetLanguageInList(g_Config.m_EcTranslateLanguageWhitelist, sizeof(g_Config.m_EcTranslateLanguageWhitelist), pCode, !Whitelisted);
-		}
-		pPopup->m_pChat->Ui()->DoToolTip(&pPopup->m_vWhitelistButtons[i], &Whitelist, Localize("Auto translate this language"));
+		const bool Selected = pPopup->m_EditSlot == 0 ? str_comp_nocase(g_Config.m_EcChatTranslateFrom, pCode) == 0
+							 : str_comp_nocase(g_Config.m_EcTranslateTarget, pCode) == 0;
 
-		const bool Blacklisted = CTranslate::IsLanguageInList(g_Config.m_EcTranslateLanguageBlacklist, pCode);
-		if(pUi->DoButton_FontIcon(&pPopup->m_vBlacklistButtons[i], FontIcon::BAN, Blacklisted, &Blacklist, BUTTONFLAG_LEFT,
-			   IGraphics::CORNER_ALL, true, Blacklisted ? std::optional(BlacklistColor.WithMultipliedAlpha(pUi->ButtonColorMul(&pPopup->m_vBlacklistButtons[i]))) : std::nullopt))
+		if(pUi->DoButton_PopupMenu(&pPopup->m_vWhitelistButtons[i], aBuf, &Slot, POPUP_FONT_SIZE, TEXTALIGN_ML, POPUP_ENTRY_PADDING, true, true,
+			   Selected ? std::optional(ColorRGBA(0.35f, 0.55f, 0.95f, 0.75f)) : std::nullopt))
 		{
-			CTranslate::SetLanguageInList(g_Config.m_EcTranslateLanguageBlacklist, sizeof(g_Config.m_EcTranslateLanguageBlacklist), pCode, !Blacklisted);
+			if(pPopup->m_EditSlot == 0)
+				str_copy(g_Config.m_EcChatTranslateFrom, pCode, sizeof(g_Config.m_EcChatTranslateFrom));
+			else
+				str_copy(g_Config.m_EcTranslateTarget, pCode, sizeof(g_Config.m_EcTranslateTarget));
+			pPopup->m_pChat->Ui()->ClosePopupMenu(pPopup);
 		}
-		pPopup->m_pChat->Ui()->DoToolTip(&pPopup->m_vBlacklistButtons[i], &Blacklist, Localize("Never auto translate this language"));
 	}
 
 	pPopup->m_ScrollRegion.End();
@@ -2745,20 +2777,19 @@ CUi::EPopupMenuFunctionResult CChat::CChatPopupContext::Render(void *pContext, C
 	};
 
 	char aBuf[64];
-	str_format(aBuf, sizeof(aBuf), "%s: %s", Localize("Auto translate"), g_Config.m_EcTranslateAuto ? Localize("On") : Localize("Off"));
-	// Left open, the label it flips is the only thing that reports what happened
-	if(pUi->DoButton_PopupMenu(&pPopup->m_AutoTranslateButton, aBuf, NextSlot(), POPUP_FONT_SIZE, TEXTALIGN_ML, POPUP_ENTRY_PADDING, true))
+	// DOClient: translate every incoming message
+	str_format(aBuf, sizeof(aBuf), "%s: %s", Localize("Translate"), g_Config.m_EcChatTranslateAll ? Localize("On") : Localize("Off"));
+	if(pUi->DoButton_PopupMenu(&pPopup->m_TranslateAllButton, aBuf, NextSlot(), POPUP_FONT_SIZE, TEXTALIGN_ML, POPUP_ENTRY_PADDING, true))
 	{
-		g_Config.m_EcTranslateAuto ^= 1;
+		g_Config.m_EcChatTranslateAll ^= 1;
 	}
 
-	str_format(aBuf, sizeof(aBuf), "%s: %s", Localize("Backend"), CTranslate::BackendName(CTranslate::Backend()));
-	if(pUi->DoButton_PopupMenu(&pPopup->m_BackendButton, aBuf, NextSlot(), POPUP_FONT_SIZE, TEXTALIGN_ML, POPUP_ENTRY_PADDING, true))
 	{
-		pChat->OpenBackendPopup(Slot);
+		char aLang[64];
+		CTranslate::NormalizeLanguage(g_Config.m_EcTranslateTarget, aLang, sizeof(aLang));
+		str_format(aBuf, sizeof(aBuf), "%s: %s", Localize("Language"), aLang[0] ? aLang : "?");
 	}
-
-	if(pUi->DoButton_PopupMenu(&pPopup->m_LanguagesButton, Localize("Languages"), NextSlot(), POPUP_FONT_SIZE, TEXTALIGN_ML, POPUP_ENTRY_PADDING, true))
+	if(pUi->DoButton_PopupMenu(&pPopup->m_LanguageButton, aBuf, NextSlot(), POPUP_FONT_SIZE, TEXTALIGN_ML, POPUP_ENTRY_PADDING, true))
 	{
 		pChat->OpenLanguagePopup(Slot);
 	}

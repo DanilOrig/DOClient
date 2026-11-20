@@ -750,7 +750,7 @@ endif()
 if(CLIENT AND VULKAN)
   show_dependency_status("Vulkan" VULKAN)
 endif()
-if(NOT(CURL_FOUND) AND NOT TARGET_OS STREQUAL "emscripten")
+if(NOT(CURL_FOUND) AND NOT(Curl_FOUND) AND NOT TARGET_OS STREQUAL "emscripten")
   message(SEND_ERROR "You must install Curl to compile ${CMAKE_PROJECT_NAME}")
 endif()
 if(NOT(Python3_FOUND))
@@ -832,6 +832,7 @@ if(TARGET_OS STREQUAL "windows")
   list(APPEND PLATFORM_LIBS ws2_32.lib) # Windows sockets
   list(APPEND PLATFORM_LIBS advapi32.lib) # Reg* and Crypt* functions
   list(APPEND PLATFORM_LIBS bcrypt.lib userenv.lib) # for Rust (https://github.com/rust-lang/rust/issues/91974)
+  list(APPEND PLATFORM_LIBS synchronization.lib) # for Rust
   list(APPEND PLATFORM_LIBS ole32.lib) # CoInitialize(Ex)
   list(APPEND PLATFORM_LIBS shell32.lib)
   list(APPEND PLATFORM_LIBS ntdll.lib) # https://github.com/ddnet/ddnet/issues/6725
@@ -2784,6 +2785,8 @@ if(CLIENT)
     components/entity/commands.cpp
     components/entity/entity.cpp
     components/entity/entity.h 
+    components/entity/finish_prediction.cpp
+    components/entity/finish_prediction.h
     components/entity/freeze_kill.cpp
     components/entity/freeze_kill.h 
     components/entity/hud/hud_editor.cpp
@@ -2886,6 +2889,9 @@ if(CLIENT)
     components/players.h
     components/race_demo.cpp
     components/race_demo.h
+    components/edgehelper.cpp
+    components/aspect_ratio.cpp
+    components/edgehelper.h
     components/spectateyou.cpp
     components/spectateyou.h
     components/gradient.cpp
@@ -2949,8 +2955,12 @@ if(CLIENT)
     prediction/entities/door.h
     prediction/entities/dragger.cpp
     prediction/entities/dragger.h
+    prediction/entities/gun.cpp
+    prediction/entities/gun.h
     prediction/entities/laser.cpp
     prediction/entities/laser.h
+    prediction/entities/light.cpp
+    prediction/entities/light.h
     prediction/entities/pickup.cpp
     prediction/entities/pickup.h
     prediction/entities/plasma.cpp

@@ -608,7 +608,7 @@ public:
 		Json.WriteAttribute("q");
 		Json.WriteStrValue(pText);
 		Json.WriteAttribute("source");
-		Json.WriteStrValue("auto");
+		Json.WriteStrValue(g_Config.m_EcChatTranslateFrom[0] ? g_Config.m_EcChatTranslateFrom : "auto");
 		Json.WriteAttribute("target");
 		Json.WriteStrValue(EncodeTarget(g_Config.m_EcTranslateTarget));
 		Json.WriteAttribute("format");
@@ -828,7 +828,8 @@ public:
 	CTranslateBackendGoogle(IHttp &Http, const char *pText)
 	{
 		char aBuf[4096];
-		str_format(aBuf, sizeof(aBuf), "https://translate.google.com/translate_a/single?client=gtx&sl=auto&tl=%s&dt=t&q=",
+		str_format(aBuf, sizeof(aBuf), "https://translate.google.com/translate_a/single?client=gtx&sl=%s&tl=%s&dt=t&q=",
+			g_Config.m_EcChatTranslateFrom[0] ? g_Config.m_EcChatTranslateFrom : "auto",
 			EncodeTarget(g_Config.m_EcTranslateTarget));
 		UrlEncode(pText, aBuf + strlen(aBuf), sizeof(aBuf) - strlen(aBuf));
 		CreateHttpRequest(Http, aBuf);
@@ -1173,7 +1174,18 @@ void CTranslate::OnRender()
 				Job.m_pTranslateResponse->m_Language[0] = '\0';
 			}
 
-			if(Job.m_pTranslateResponse->m_Auto)
+			if(Job.m_pTranslateResponse->m_Auto && g_Config.m_EcChatTranslateAll)
+			{
+				// DOClient: everything is translated, the language lists are ignored, but only
+				// messages in the chosen source language are
+				if(str_comp_nocase(g_Config.m_EcChatTranslateFrom, "auto") != 0 && Job.m_pTranslateResponse->m_Language[0] != '\0' &&
+					!Job.m_pBackend->CompareTargets(Job.m_pTranslateResponse->m_Language, g_Config.m_EcChatTranslateFrom))
+				{
+					Job.m_pTranslateResponse->m_Text[0] = '\0';
+					Job.m_pTranslateResponse->m_Language[0] = '\0';
+				}
+			}
+			else if(Job.m_pTranslateResponse->m_Auto)
 			{
 				if(!HandleLanguageWhitelist(Job.m_pTranslateResponse->m_Language))
 				{
@@ -1213,7 +1225,8 @@ void CTranslate::AutoTranslate(CChat::CLine &Line)
 			return;
 	}
 
-	if(!g_Config.m_EcTranslateAuto)
+	// DOClient: the "All" toggle translates every incoming message
+	if(!g_Config.m_EcTranslateAuto && !g_Config.m_EcChatTranslateAll)
 		return;
 	if(Line.m_ClientId <= CChat::SERVER_MSG)
 		return;

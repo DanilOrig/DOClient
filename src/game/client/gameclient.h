@@ -62,6 +62,8 @@
 #include "components/players.h"
 #include "components/race_demo.h"
 #include "components/scoreboard.h"
+#include "components/edgehelper.h"
+#include "components/aspect_ratio.h"
 #include "components/gradient.h"
 #include "components/spectateyou.h"
 #include "components/skins.h"
@@ -78,6 +80,7 @@
 #include "components/entity/browser_map_preview.h"
 #include "components/entity/chat_bubbles.h"
 #include "components/entity/entity.h"
+#include "components/entity/finish_prediction.h"
 #include "components/entity/freeze_kill.h"
 #include "components/entity/info.h"
 #include "components/entity/local_practice.h"
@@ -252,6 +255,8 @@ public:
 	CScoreboard m_Scoreboard;
 	CGradient m_Gradient;
 	CSpectateYou m_SpectateYou;
+	CEdgeHelper m_EdgeHelper;
+	CAspectRatio m_AspectRatio;
 	CStatboard m_Statboard;
 	CSounds m_Sounds;
 	CEmoticon m_Emoticon;
@@ -284,6 +289,7 @@ public:
 	CChatBubbles m_ChatBubbles;
 	CEClient m_EClient;
 	CEntityInfo m_EntityInfo;
+	CFinishPrediction m_FinishPrediction;
 	CFreezeKill m_FreezeKill;
 	CHudEditor m_HudEditor;
 	CLocalPractice m_LocalPractice;

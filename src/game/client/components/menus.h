@@ -837,6 +837,7 @@ public:
 	SUIAnimator m_aAnimatorsSmallPage[SMALL_TAB_LENGTH];
 	SUIAnimator m_aAnimatorsSettingsTab[SETTINGS_LENGTH];
 
+
 	// DDRace
 	int DoButton_CheckBox_Tristate(const void *pId, const char *pText, TRISTATE Checked, const CUIRect *pRect);
 	std::vector<CDemoItem> m_vDemos;

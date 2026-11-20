@@ -177,6 +177,7 @@ void CGameClient::OnConsoleInit()
 					      &m_PlayerIndicator, // TClient
 					      &m_CustomCommunities, // TClient
 					      &m_MapOverview, // EClient
+					      &m_FinishPrediction, // EClient
 					      &m_BrowserMapPreview, // EClient
 					      &m_Hud,
 					      &m_Spectator,
@@ -199,9 +200,11 @@ void CGameClient::OnConsoleInit()
 					      &m_Scoreboard,
 					      &m_Gradient,
 					      &m_SpectateYou,
+					      &m_EdgeHelper,
 					      &m_Statboard,
 					      &m_Motd,
 					      &m_Menus,
+					      &m_AspectRatio,
 					      &m_Scripting, // TClient
 					      &m_KeyBinder,
 					      &m_GameConsole,
@@ -1673,6 +1676,9 @@ void CGameClient::SwapTimerOnMessage(int MsgId, void *pRawMsg, bool Dummy)
 			const char *pNameStart = pCanceledOwn + str_length("You have canceled swap with ");
 			char aName[MAX_NAME_LENGTH];
 			str_truncate(aName, sizeof(aName), pNameStart, str_length(pNameStart));
+			size_t NameLen = str_length(aName);
+			while(NameLen > 0 && (aName[NameLen - 1] == '.' || aName[NameLen - 1] == ' '))
+				aName[--NameLen] = '\0';
 			SwapTimerRemove(LocalId, SwapTimerFindClientId(aName));
 			return;
 		}
@@ -1685,6 +1691,10 @@ void CGameClient::SwapTimerOnMessage(int MsgId, void *pRawMsg, bool Dummy)
 			str_truncate(aName, sizeof(aName), pMsg->m_pMessage, pSwapped - pMsg->m_pMessage);
 			char aName2[MAX_NAME_LENGTH];
 			str_truncate(aName2, sizeof(aName2), pNameStart, str_length(pNameStart));
+			// the server ends the sentence with a dot, which is not part of the name
+			size_t NameLen = str_length(aName2);
+			while(NameLen > 0 && (aName2[NameLen - 1] == '.' || aName2[NameLen - 1] == ' ' || aName2[NameLen - 1] == '!'))
+				aName2[--NameLen] = '\0';
 			SwapTimerRemoveSwapped(SwapTimerFindClientId(aName), SwapTimerFindClientId(aName2));
 		}
 	}

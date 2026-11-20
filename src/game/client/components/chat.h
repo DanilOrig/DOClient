@@ -6,6 +6,7 @@
 #include <base/str.h>
 
 #include <engine/console.h>
+#include <engine/http.h>
 #include <engine/shared/config.h>
 #include <engine/shared/protocol.h>
 #include <engine/shared/ringbuffer.h>
@@ -180,9 +181,8 @@ class CChat : public CComponent
 	public:
 		CChat *m_pChat = nullptr;
 
-		CButtonContainer m_AutoTranslateButton;
-		CButtonContainer m_BackendButton;
-		CButtonContainer m_LanguagesButton;
+		CButtonContainer m_TranslateAllButton;
+		CButtonContainer m_LanguageButton;
 		CButtonContainer m_CopyChatButton;
 		CButtonContainer m_ClearChatButton;
 
@@ -218,6 +218,10 @@ class CChat : public CComponent
 		std::vector<std::string> m_vNames;
 		std::vector<CButtonContainer> m_vWhitelistButtons;
 		std::vector<CButtonContainer> m_vBlacklistButtons;
+
+		// DOClient: 0 = language we translate from, 1 = incoming target, 2 = our own messages target
+		int m_EditSlot = 1;
+		CButtonContainer m_aSlotButtons[2];
 
 		static CUi::EPopupMenuFunctionResult Render(void *pContext, CUIRect View, bool Active);
 	};
